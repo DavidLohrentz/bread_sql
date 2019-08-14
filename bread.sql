@@ -149,243 +149,118 @@ CREATE OR REPLACE VIEW formula
 
             --doughs
 INSERT INTO doughs (dough_name, lead_time_days) 
-     VALUES ('cranberry walnut Sourdough', 2) 
-         ON CONFLICT (dough_name) DO 
-     UPDATE SET dough_name = EXCLUDED.dough_name;
-
-INSERT INTO doughs (dough_name, lead_time_days) 
-     VALUES ('pizza dough', 1) 
-         ON CONFLICT (dough_name) DO 
-     UPDATE SET dough_name = EXCLUDED.dough_name;
-
-INSERT INTO doughs (dough_name, lead_time_days) 
-     VALUES ('rugbrod', 2) 
-         ON CONFLICT (dough_name) DO 
-     UPDATE SET dough_name = EXCLUDED.dough_name;
-
-INSERT INTO doughs (dough_name, lead_time_days) 
-     VALUES ('Kamut Sourdough', 2) 
-         ON CONFLICT (dough_name) DO 
-     UPDATE SET dough_name = EXCLUDED.dough_name;
-
+     VALUES ('cranberry walnut Sourdough', 2),
+            ('pizza dough', 1),
+            ('rugbrod', 2),
+            ('Kamut Sourdough', 2)
+;
 
             --suppliers
 INSERT INTO suppliers (supplier_name) 
-     VALUES ('Madison Sourdough') 
-         ON CONFLICT (supplier_name) DO 
-     UPDATE SET supplier_name = EXCLUDED.supplier_name;
-
-INSERT INTO suppliers (supplier_name) 
-     VALUES ('Meadlowlark Organics') 
-         ON CONFLICT (supplier_name) DO 
-     UPDATE SET supplier_name = EXCLUDED.supplier_name;
-
-INSERT INTO suppliers (supplier_name) 
-     VALUES ('Woodmans') 
-         ON CONFLICT (supplier_name) DO 
-     UPDATE SET supplier_name = EXCLUDED.supplier_name;
-
-INSERT INTO suppliers (supplier_name) 
-     VALUES ('Willy St Coop') 
-         ON CONFLICT (supplier_name) DO 
-     UPDATE SET supplier_name = EXCLUDED.supplier_name;
-
+     VALUES ('Madison Sourdough'),
+            ('Meadlowlark Organics'),
+            ('Woodmans'),
+            ('Willy St Coop')
+;
 
             --manufacturers
 INSERT INTO manufacturers (manufacturers) 
-     VALUES ('Madison Sourdough') 
-         ON CONFLICT (manufacturers) DO 
-     UPDATE SET manufacturers = EXCLUDED.manufacturers;
-
-INSERT INTO manufacturers (manufacturers) 
-     VALUES ('Meadlowlark Organics') 
-         ON CONFLICT (manufacturers) DO 
-     UPDATE SET manufacturers = EXCLUDED.manufacturers;
-
-INSERT INTO manufacturers (manufacturers) 
-     VALUES ('King Arthur') 
-         ON CONFLICT (manufacturers) DO 
-     UPDATE SET manufacturers = EXCLUDED.manufacturers;
-
-INSERT INTO manufacturers (manufacturers) 
-     VALUES ('Woodmans') 
-         ON CONFLICT (manufacturers) DO 
-     UPDATE SET manufacturers = EXCLUDED.manufacturers;
-
-INSERT INTO manufacturers (manufacturers) 
-     VALUES ('Redmond') 
-         ON CONFLICT (manufacturers) DO 
-     UPDATE SET manufacturers = EXCLUDED.manufacturers;
-
-INSERT INTO manufacturers (manufacturers) 
-     VALUES ('diy') 
-         ON CONFLICT (manufacturers) DO 
-     UPDATE SET manufacturers = EXCLUDED.manufacturers;
-
+     VALUES ('Madison Sourdough'),
+            ('Meadlowlark Organics'),
+            ('King Arthur'),
+            ('Woodmans'),
+            ('Redmond'),
+            ('diy')
+;
 
             --ingredients
 INSERT INTO ingredients (ingredient_name, manufacturer_id, is_flour) 
-     VALUES ('Bolted Red Fife Flour', 2, TRUE);
-
-INSERT INTO ingredients (ingredient_name, manufacturer_id, is_flour) 
-     VALUES ('Kamut Flour', 1, TRUE);
-
-INSERT INTO ingredients (ingredient_name, manufacturer_id, is_flour) 
-     VALUES ('Rye Flour', 1, TRUE);
-
-INSERT INTO ingredients (ingredient_name, manufacturer_id, is_flour) 
-     VALUES ('All Purpose Flour', 3, TRUE);
-
-INSERT INTO ingredients (ingredient_name, manufacturer_id, is_flour) 
-     VALUES ('Bread Flour', 3, TRUE);
-
-INSERT INTO ingredients (ingredient_name, manufacturer_id, is_flour) 
-     VALUES ('water', 4, FALSE);
-
-INSERT INTO ingredients (ingredient_name, manufacturer_id, is_flour) 
-     VALUES ('High Extraction Flour', 1, TRUE);
-
-INSERT INTO ingredients (ingredient_name, manufacturer_id, is_flour) 
-     VALUES ('Sea Salt', 5, FALSE);
-
-INSERT INTO ingredients (ingredient_name, manufacturer_id, is_flour) 
-     VALUES ('leaven', 6, FALSE);
-
+     VALUES ('Bolted Red Fife Flour', 2, TRUE),
+            ('Kamut Flour', 1, TRUE),
+            ('Rye Flour', 1, TRUE),
+            ('All Purpose Flour', 3, TRUE),
+            ('Bread Flour', 3, TRUE),
+            ('water', 4, FALSE),
+            ('High Extraction Flour', 1, TRUE),
+            ('Sea Salt', 5, FALSE),
+            ('leaven', 6, FALSE)
+;
 
             --shapes
 INSERT INTO shapes (shape_name) 
-     VALUES ('12" Boule') 
-         ON CONFLICT (shape_name) DO 
-     UPDATE SET shape_name = EXCLUDED.shape_name;
-
-INSERT INTO shapes (shape_name) 
-     VALUES ('4" pan loaves') 
-         ON CONFLICT (shape_name) DO 
-     UPDATE SET shape_name = EXCLUDED.shape_name;
-
-INSERT INTO shapes (shape_name) 
-     VALUES ('16" pizza') 
-         ON CONFLICT (shape_name) DO 
-     UPDATE SET shape_name = EXCLUDED.shape_name;
-
+     VALUES ('12" Boule'),
+            ('4" pan loaves'),
+            ('16" pizza')
+;
 
             --dough_shape_weights
 INSERT INTO dough_shape_weights (dough_id, shape_id, dough_shape_grams)
-     VALUES (4, 1, 1600);
-
+     VALUES (4, 1, 1600),
+            (3, 2, 1280)
+;
 
             --dough_ingredients
 INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent) 
-     VALUES (4, 2, 40);
-
-INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent) 
-     VALUES (4, 4, 30);
-
-INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent) 
-     VALUES (4, 7, 30);
-
-INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent) 
-     VALUES (4, 6, 80);
-
-INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent) 
-     VALUES (4, 8, 1.9);
-
+     VALUES (4, 2, 40),
+            (4, 4, 30),
+            (4, 7, 30),
+            (4, 6, 80),
+            (4, 8, 1.9)
+;
 
             --dough_instructions
 INSERT INTO dough_instructions (dough_id, instructions) 
      VALUES (4, 'bake at 450 with lid on for 30 min;
-            410 lid off for 25 min');
-
-INSERT INTO dough_instructions (dough_id, instructions) 
-     VALUES (4, 'put cold sheet pan under dutch oven at half way point');
-
+            410 lid off for 25 min'),
+            (4, 'put cold sheet pan under dutch oven at half way point')
+;
 
             --ingredient_suppliers
 INSERT INTO ingredient_suppliers (ingredient_id, supplier_id, 
             manufacturer_id, grams_per_unit, cost_per_unit) 
-     VALUES (6, 3, 4, 3785, .30);
-
-INSERT INTO ingredient_suppliers (ingredient_id, supplier_id, 
-            manufacturer_id, grams_per_unit, cost_per_unit) 
-     VALUES (1, 2, 2, 907, 5.50);
-
-INSERT INTO ingredient_suppliers (ingredient_id, supplier_id, 
-            manufacturer_id, grams_per_unit, cost_per_unit) 
-     VALUES (2, 1, 1, 907, 4.50);
-
-INSERT INTO ingredient_suppliers (ingredient_id, supplier_id, 
-            manufacturer_id, grams_per_unit, cost_per_unit) 
-     VALUES (3, 1, 1, 907, 4.50);
-
-INSERT INTO ingredient_suppliers (ingredient_id, supplier_id, 
-            manufacturer_id, grams_per_unit, cost_per_unit) 
-     VALUES (7, 1, 1, 907, 4.50);
-
-INSERT INTO ingredient_suppliers (ingredient_id, supplier_id, 
-            manufacturer_id, grams_per_unit, cost_per_unit) 
-     VALUES (4, 3, 3, 2268, 2.50);
-
-INSERT INTO ingredient_suppliers (ingredient_id, supplier_id, 
-            manufacturer_id, grams_per_unit, cost_per_unit) 
-     VALUES (5, 3, 3, 2268, 2.50);
-
-INSERT INTO ingredient_suppliers (ingredient_id, supplier_id, 
-            manufacturer_id, grams_per_unit, cost_per_unit) 
-     VALUES (8, 4, 5, 737, 2.50);
-
+     VALUES (6, 3, 4, 3785, .30),
+            (1, 2, 2, 907, 5.50),
+            (2, 1, 1, 907, 4.50),
+            (3, 1, 1, 907, 4.50),
+            (7, 1, 1, 907, 4.50),
+            (4, 3, 3, 2268, 2.50),
+            (5, 3, 3, 2268, 2.50),
+            (8, 4, 5, 737, 2.50)
+;
 
             --zip_codes
 INSERT INTO zip_codes (zip_code, city, state) 
-     VALUES (53705, 'Madison', 'WI');
-
-INSERT INTO zip_codes (zip_code, city, state) 
-     VALUES (53703, 'Madison', 'WI');
-
+     VALUES (53705, 'Madison', 'WI'),
+            (53703, 'Madison', 'WI')
+;
 
             --customers
 INSERT INTO customers (customer_name, street_numb, street_name, zip_code) 
-     VALUES ('lohrentz', '2906', 'Barlow St', '53705');
-
+     VALUES ('lohrentz', '2906', 'Barlow St', '53705')
+;
 
             --special_orders
 INSERT INTO special_orders (delivery_date, customer_id, dough_id, 
             shape_id, amt, order_created_at) 
      VALUES ((SELECT now()::date + interval '2 days'), 1, 4, 1, 1, 
-            (SELECT now()));
+            (SELECT now())),
 
-INSERT INTO special_orders (delivery_date, customer_id, dough_id, 
-            shape_id, amt, order_created_at) 
-     VALUES ((SELECT now()::date + interval '2 days'), 1, 3, 2, 1, 
-            (SELECT now()));
+            ((SELECT now()::date + interval '2 days'), 1, 3, 2, 1, 
+            (SELECT now()))
+;
 
 
             --preferments
 INSERT INTO preferments (preferment) 
-     VALUES ('sour') 
-         ON CONFLICT (preferment) DO 
-     UPDATE SET preferment = EXCLUDED.preferment;
-
-INSERT INTO preferments (preferment) 
-     VALUES ('poolish') 
-         ON CONFLICT (preferment) DO 
-     UPDATE SET preferment = EXCLUDED.preferment;
-
-INSERT INTO preferments (preferment) 
-     VALUES ('soaker') 
-         ON CONFLICT (preferment) DO 
-     UPDATE SET preferment = EXCLUDED.preferment;
-
+     VALUES ('sour'),
+            ('poolish'),
+            ('soaker')
+;
 
             --dough_preferments
 INSERT INTO dough_preferments (dough_id, preferment_id, ingredient_id, 
             percent_of_ingredient_total) 
-     VALUES (4, 1, 4, 33 );
-
-INSERT INTO dough_preferments (dough_id, preferment_id, ingredient_id, 
-            percent_of_ingredient_total) 
-     VALUES (4, 1, 7, 33 );
-
-INSERT INTO dough_preferments (dough_id, preferment_id, ingredient_id, 
-            percent_of_ingredient_total) 
-     VALUES (4, 1, 6, 20 );
-
+     VALUES (4, 1, 4, 33 ),
+            (4, 1, 7, 33 ),
+            (4, 1, 6, 20 )
+;
