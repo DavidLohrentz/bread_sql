@@ -120,21 +120,23 @@ CREATE OR REPLACE VIEW COGS AS
 CREATE OR REPLACE VIEW bkrs_percent_sum AS SELECT sum(bakers_percent) / 100
     FROM dough_ingredients;
 
-CREATE OR REPLACE VIEW quantity AS SELECT 
-       (SELECT amt FROM quantity),
-       d.dough_name, s.shape_name, pdw.dough_shape_grams AS unit_weight
+CREATE OR REPLACE VIEW quantity AS 
+SELECT so.amt, d.dough_name, s.shape_name, dsw.dough_shape_grams AS grams
   FROM dough_shape_weights AS dsw
-       JOIN doughs AS d 
+       JOIN doughs AS d
        ON d.dough_id = dsw.dough_id
 
-       JOIN shapes AS s 
-       ON s.shape_id = dsw.shape_id;
+       JOIN shapes AS s
+       ON s.shape_id = dsw.shape_id
+
+       JOIN special_orders as so
+       ON so.dough_id = dsw.dough_id;
 
 --query the bakers %, ingredient and grams for each item in this formula
 CREATE OR REPLACE VIEW formula 
     AS SELECT d.dough_id, di.bakers_percent AS "bakers %", 
     i.ingredient_name as ingredient,
-    ROUND((di.bakers_percent / 100) * (SELECT quantity FROM quantity) 
+    ROUND((di.bakers_percent / 100) * (SELECT amt FROM quantity) 
     * dsw.dough_shape_grams / (SELECT * FROM bkrs_percent_sum))
     AS grams
     FROM doughs AS d
@@ -349,6 +351,11 @@ INSERT INTO customers (customer_name, street_numb, street_name, zip_code)
 INSERT INTO special_orders (delivery_date, customer_id, dough_id, 
             shape_id, amt, order_created_at) 
      VALUES ((SELECT now()::date + interval '2 days'), 1, 4, 1, 1, 
+            (SELECT now()));
+
+INSERT INTO special_orders (delivery_date, customer_id, dough_id, 
+            shape_id, amt, order_created_at) 
+     VALUES ((SELECT now()::date + interval '2 days'), 1, 3, 2, 1, 
             (SELECT now()));
 
 
