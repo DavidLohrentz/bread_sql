@@ -33,7 +33,7 @@ CREATE TABLE organization_st (
 
 CREATE TABLE phones (
        party_id INTEGER NOT NULL,
-       phone_type char(1) not null default 'w' check 
+       phone_type char(1) not null default 'm' check 
             (phone_type in ('w', 'h', 'f', 'b', 'm', 'e')),
             -- work, home, fax, business, mobile, emergency
        phone_no VARCHAR(25) UNIQUE NOT NULL,
@@ -60,7 +60,7 @@ name_merge (party_id, new_name) AS
      FROM parties AS p
           FULL JOIN people_st as pe on p.party_id = pe.party_id)
 
-SELECT nm.new_name AS name, p.party_type, t.type, ph.phone_no
+SELECT ph.party_id, nm.new_name AS name, p.party_type, t.type, ph.phone_no
   FROM phones AS ph
   JOIN name_merge as nm on ph.party_id = nm.party_id
   JOIN typology AS t ON ph.party_id = t.party_id AND ph.phone_type = t.phone_type_abbr
@@ -87,7 +87,12 @@ VALUES (1, 'o', '0123456789', 'b'),
 INSERT INTO phones (party_id, phone_type, phone_no)
 VALUES (3, 'm', '555-1212'),
        (3, 'w', '608-555-0000'),
-       (1, 'b', '800-000-0000')
+       (2, 'b', '608-555-0011'),
+       (1, 'w', '608-555-1111'),
+       (4, 'm', '608-555-2222'),
+       (4, 'w', '608-555-3333'),
+       (3, 'e', '608-555-1234'),
+       (1, 'f', '608-000-0000')
 ;
 
 SELECT pe.party_id, pe.first_name, p.party_name AS last_name
