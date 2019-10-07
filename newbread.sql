@@ -2,6 +2,8 @@ SET timezone = 'US/Central';
 
 -- CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+DROP FUNCTION IF EXISTS get_orders;
+
 DROP VIEW IF EXISTS phone_book, staff_list,
      ingredient_list, people_list, shape_list,
      bp, ein_list, todays_orders
@@ -223,6 +225,16 @@ SELECT so.delivery_date, d.lead_time_days AS lead_time, so.amt,
   JOIN special_orders as so ON so.dough_id = dsw.dough_id
  WHERE now()::date + d.lead_time_days = delivery_date;
 
+CREATE OR REPLACE FUNCTION
+get_orders(which_dough text)
+RETURNS BIGINT AS
+'SELECT sum(amt)
+   FROM todays_orders
+  WHERE dough_name = which_dough
+;'
+LANGUAGE SQL
+IMMUTABLE
+RETURNS NULL ON NULL INPUT;
 
 INSERT INTO zip_codes (zip, city, state)
 VALUES (53705, 'Madison', 'WI'),
@@ -348,6 +360,10 @@ INSERT INTO special_orders (delivery_date, customer_id, customer_type, dough_id,
 
         --pita bread
             ((SELECT now()::date + interval '1 day'), 1, 'i', 5, 4, 8,
+            (SELECT now())),
+
+        --pita bread
+            ((SELECT now()::date + interval '1 day'), 1, 'i', 5, 4, 4,
             (SELECT now())),
 
         --rugbrod
