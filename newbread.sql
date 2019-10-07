@@ -4,7 +4,7 @@ SET timezone = 'US/Central';
 
 DROP VIEW IF EXISTS phone_book, staff_list,
      ingredient_list, people_list, shape_list,
-     bp
+     bp, ein_list
 ;
 
 DROP TABLE IF EXISTS parties, people_st, staff_st, 
@@ -207,6 +207,11 @@ SELECT di.dough_id, di.bakers_percent, d.dough_name, i.ingredient_name
   FROM dough_ingredients AS di
   JOIN doughs AS d on di.dough_id = d.dough_id
   JOIN ingredients AS i ON di.ingredient_id = i.ingredient_id;
+
+CREATE VIEW ein_list AS 
+SELECT p.party_name as name, ei.ein FROM emp_id_numbs AS ei 
+  JOIN parties AS p on ei.party_id = p.party_id 
+       AND ei.party_type = p.party_type;
 
 
 INSERT INTO zip_codes (zip, city, state)
