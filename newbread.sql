@@ -11,7 +11,7 @@ DROP TABLE IF EXISTS parties, people_st, staff_st,
      organization_st, phones, zip_codes, doughs,
      shapes, ingredients, dough_shape_weights,
      dough_ingredients, preferments, dough_preferments,
-     special_orders
+     special_orders, emp_id_numbs
 ;
 
 CREATE TABLE parties (
@@ -62,6 +62,12 @@ CREATE TABLE organization_st (
        CONSTRAINT check_org_in_list CHECK 
             (org_type IN('b', 'n', 'g')),
             -- b = Business, n = Nonprofit, g = Gov't
+       FOREIGN KEY (party_id, party_type) references parties (party_id, party_type))
+;
+
+CREATE TABLE emp_id_numbs (
+       party_id INTEGER PRIMARY KEY,
+       party_type CHAR(1) default 'o' check (party_type = 'o') NOT NULL,
        ein CHAR(10) UNIQUE NOT NULL,
        FOREIGN KEY (party_id, party_type) references parties (party_id, party_type))
 ;
@@ -268,9 +274,14 @@ VALUES (1, 'i', '123-45-6789', TRUE, '2019-10-01', '2906', 'Barlow St', 53705),
        (2, 'i', '121-21-2121', FALSE, '2017-12-30', '924', 'Williamson St', 53703)
 ;
 
-INSERT INTO organization_st (party_id, party_type, ein, org_type)
-VALUES (3, 'o', '0123456789', 'b'),
-       (4, 'o', '1111111111', 'n')
+INSERT INTO organization_st (party_id, party_type, org_type)
+VALUES (3, 'o', 'b'),
+       (4, 'o', 'n')
+;
+
+INSERT INTO emp_id_numbs (party_id, party_type, ein)
+VALUES (3, 'o', '0123456789'),
+       (4, 'o', '1111111111')
 ;
 
 INSERT INTO phones (party_id, phone_type, phone_no)
