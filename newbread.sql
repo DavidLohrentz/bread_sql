@@ -2,7 +2,8 @@ SET timezone = 'US/Central';
 
 -- CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-DROP FUNCTION IF EXISTS get_orders;
+DROP FUNCTION IF EXISTS get_orders, get_batch_weight
+;
 
 DROP VIEW IF EXISTS phone_book, staff_list,
      ingredient_list, people_list, shape_list,
@@ -229,6 +230,17 @@ CREATE OR REPLACE FUNCTION
 get_orders(which_dough text)
 RETURNS BIGINT AS
 'SELECT sum(amt)
+   FROM todays_orders
+  WHERE dough_name = which_dough
+;'
+LANGUAGE SQL
+IMMUTABLE
+RETURNS NULL ON NULL INPUT;
+
+CREATE OR REPLACE FUNCTION
+get_batch_weight(which_dough text)
+RETURNS BIGINT AS
+'SELECT sum(amt * grams)
    FROM todays_orders
   WHERE dough_name = which_dough
 ;'
