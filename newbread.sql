@@ -1,7 +1,7 @@
 -- CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 DROP VIEW IF EXISTS phone_book, staff_list,
-     ingredient_list
+     ingredient_list, people_list;
 ;
 
 DROP TABLE IF EXISTS parties, people_st, staff_st, 
@@ -131,6 +131,12 @@ JOIN phone_book as ph ON s.party_id = ph.party_id
 JOIN zip_codes AS z on s.zip = z.zip_code
 WHERE ph.type = 'mobile';
 
+CREATE OR REPLACE VIEW people_list AS
+SELECT pe.party_id, pe.first_name, p.party_name AS last_name
+  FROM people_st AS pe
+  JOIN parties AS p ON pe.party_id = p.party_id
+;
+
 INSERT INTO zip_codes (zip_code, city, state)
 VALUES (53705, 'Madison', 'WI'),
        (53703, 'Madison', 'WI'),
@@ -204,23 +210,3 @@ VALUES (1, 'm', '555-1212'),
        (2, 'e', '608-555-1234'),
        (6, 'f', '608-000-0000')
 ;
-
-SELECT pe.party_id, pe.first_name, p.party_name AS last_name
-  FROM people_st AS pe
-  JOIN parties AS p ON pe.party_id = p.party_id
-;
-
-SELECT *
-  FROM organization_st;
-
-SELECT *
-  FROM parties;
-
-SELECT * 
-  FROM phone_book;
-
-SELECT * 
-  FROM staff_list;
-
-SELECT * 
-  FROM doughs;
