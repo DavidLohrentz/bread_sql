@@ -4,7 +4,7 @@ SET timezone = 'US/Central';
 
 DROP VIEW IF EXISTS phone_book, staff_list,
      ingredient_list, people_list, shape_list,
-     bp, ein_list
+     bp, ein_list, todays_orders
 ;
 
 DROP TABLE IF EXISTS parties, people_st, staff_st, 
@@ -208,10 +208,20 @@ SELECT di.dough_id, di.bakers_percent, d.dough_name, i.ingredient_name
   JOIN doughs AS d on di.dough_id = d.dough_id
   JOIN ingredients AS i ON di.ingredient_id = i.ingredient_id;
 
-CREATE VIEW ein_list AS 
+CREATE OR REPLACE VIEW ein_list AS 
 SELECT p.party_name as name, ei.ein FROM emp_id_numbs AS ei 
   JOIN parties AS p on ei.party_id = p.party_id 
        AND ei.party_type = p.party_type;
+
+CREATE OR REPLACE VIEW todays_orders AS 
+SELECT so.delivery_date, d.lead_time_days AS lead_time, so.amt, 
+       d.dough_name, s.shape_name, dsw.dough_shape_grams AS grams
+    
+  FROM dough_shape_weights AS dsw 
+  JOIN doughs AS d ON d.dough_id = dsw.dough_id
+  JOIN shapes AS s ON s.shape_id = dsw.shape_id
+  JOIN special_orders as so ON so.dough_id = dsw.dough_id
+ WHERE now()::date + d.lead_time_days = delivery_date;
 
 
 INSERT INTO zip_codes (zip, city, state)
