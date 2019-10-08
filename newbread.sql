@@ -2,10 +2,12 @@ SET timezone = 'US/Central';
 
 -- CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+\set myvar 'pita bread'
+
 DROP VIEW IF EXISTS phone_book, staff_list,
      ingredient_list, people_list, shape_list,
      bp, ein_list, todays_orders, dough_ingredient_list,
-     pita, kamut
+     pita, kamut, formula
 ;
 
 DROP FUNCTION IF EXISTS get_orders, get_batch_weight,
@@ -278,11 +280,22 @@ WHERE dough_name = 'pita bread';
 
 CREATE OR REPLACE VIEW kamut AS
 SELECT bakers_percent, ingredient_name AS ingredient, 
-       ROUND(get_batch_weight('Kamut Sourdough') * 
-       bakers_percent / bak_per(), 0) AS overall
-FROM dough_ingredient_list
+       ROUND(get_batch_weight('Kamut Sourdough') * bakers_percent / 
+       bak_per(), 0) AS overall,
+       ROUND(get_batch_weight('Kamut Sourdough') * bakers_percent / 
+       bak_per() * percent_of_ingredient_total /100, 0) AS sour,
+       ROUND(get_batch_weight('Kamut Sourdough') * bakers_percent / bak_per() - 
+       COALESCE ((get_batch_weight('Kamut Sourdough') * bakers_percent / bak_per() 
+       * percent_of_ingredient_total / 100), 0), 0) AS final 
+FROM dough_ingredient_list             
 WHERE dough_name = 'Kamut Sourdough';
 
+
+CREATE OR REPLACE VIEW formula AS 
+SELECT bakers_percent, ingredient_name AS ingredient, 
+       ROUND(get_batch_weight(:'myvar') * bakers_percent / bak_per(), 0) AS overall
+FROM dough_ingredient_list
+WHERE dough_name = :'myvar';
 
 INSERT INTO zip_codes (zip, city, state)
 VALUES (53705, 'Madison', 'WI'),
@@ -395,7 +408,9 @@ INSERT INTO dough_preferments (dough_id, preferment_id, ingredient_id,
             percent_of_ingredient_total)
      VALUES (4, 1, 4, 33 ),
             (4, 1, 7, 33 ),
-            (4, 1, 6, 20 )
+            (4, 1, 6, 20 ),
+            (5, 1, 4, 6 ),
+            (5, 1, 6, 2.9 )
 ;
 
             --special_orders
