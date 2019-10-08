@@ -2,12 +2,14 @@ SET timezone = 'US/Central';
 
 -- CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-DROP FUNCTION IF EXISTS get_orders, get_batch_weight
-;
-
 DROP VIEW IF EXISTS phone_book, staff_list,
      ingredient_list, people_list, shape_list,
-     bp, ein_list, todays_orders
+     bp, ein_list, todays_orders, dough_ingredient_list,
+     pita, kamut
+;
+
+DROP FUNCTION IF EXISTS get_orders, get_batch_weight,
+     bak_per
 ;
 
 DROP TABLE IF EXISTS parties, people_st, staff_st, 
@@ -247,6 +249,40 @@ RETURNS BIGINT AS
 LANGUAGE SQL
 IMMUTABLE
 RETURNS NULL ON NULL INPUT;
+
+CREATE OR REPLACE VIEW dough_ingredient_list AS 
+SELECT d.dough_id, di.bakers_percent, d.dough_name, 
+       i.ingredient_name, i.is_flour, pr.preferment, 
+       dp.percent_of_ingredient_total 
+  FROM dough_ingredients as di
+  JOIN ingredients AS i
+       ON di.ingredient_id = i.ingredient_id
+  LEFT JOIN dough_preferments as dp
+       ON di.dough_id = dp.dough_id AND i.ingredient_id = dp.ingredient_id
+  FULL JOIN preferments AS pr ON dp.preferment_id = pr.preferment_id
+  JOIN doughs AS d on di.dough_id = d.dough_id;
+
+CREATE OR REPLACE FUNCTION bak_per()
+RETURNS numeric AS
+     'SELECT sum(bakers_percent) OVER (PARTITION BY dough_id)
+       FROM dough_ingredient_list;'
+LANGUAGE SQL
+;
+
+CREATE OR REPLACE VIEW pita AS
+SELECT bakers_percent, ingredient_name AS ingredient, 
+       ROUND(get_batch_weight('pita bread') * 
+       bakers_percent / bak_per(), 0) AS overall
+FROM dough_ingredient_list
+WHERE dough_name = 'pita bread';
+
+CREATE OR REPLACE VIEW kamut AS
+SELECT bakers_percent, ingredient_name AS ingredient, 
+       ROUND(get_batch_weight('Kamut Sourdough') * 
+       bakers_percent / bak_per(), 0) AS overall
+FROM dough_ingredient_list
+WHERE dough_name = 'Kamut Sourdough';
+
 
 INSERT INTO zip_codes (zip, city, state)
 VALUES (53705, 'Madison', 'WI'),
