@@ -2,8 +2,6 @@ SET timezone = 'US/Central';
 
 -- CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-\set myvar 'pita bread'
-
 DROP VIEW IF EXISTS phone_book, staff_list,
      ingredient_list, people_list, shape_list,
      bp, ein_list, todays_orders, dough_ingredient_list,
@@ -11,7 +9,7 @@ DROP VIEW IF EXISTS phone_book, staff_list,
 ;
 
 DROP FUNCTION IF EXISTS get_orders, get_batch_weight,
-     bak_per
+     bak_per, formula
 ;
 
 DROP TABLE IF EXISTS parties, people_st, staff_st, 
@@ -221,7 +219,7 @@ SELECT p.party_name as name, ei.ein FROM emp_id_numbs AS ei
        AND ei.party_type = p.party_type;
 
 CREATE OR REPLACE VIEW todays_orders AS 
-SELECT so.delivery_date, d.lead_time_days AS lead_time, so.amt, 
+SELECT d.dough_id, so.delivery_date, d.lead_time_days AS lead_time, so.amt, 
        d.dough_name, s.shape_name, dsw.dough_shape_grams AS grams
     
   FROM dough_shape_weights AS dsw 
@@ -231,22 +229,22 @@ SELECT so.delivery_date, d.lead_time_days AS lead_time, so.amt,
  WHERE now()::date + d.lead_time_days = delivery_date;
 
 CREATE OR REPLACE FUNCTION
-get_orders(which_dough text)
+get_orders(which_dough INTEGER)
 RETURNS BIGINT AS
 'SELECT sum(amt)
    FROM todays_orders
-  WHERE dough_name = which_dough
+  WHERE dough_id = which_dough
 ;'
 LANGUAGE SQL
 IMMUTABLE
 RETURNS NULL ON NULL INPUT;
 
 CREATE OR REPLACE FUNCTION
-get_batch_weight(which_dough text)
+get_batch_weight(which_dough INTEGER)
 RETURNS BIGINT AS
 'SELECT sum(amt * grams)
    FROM todays_orders
-  WHERE dough_name = which_dough
+  WHERE dough_id = which_dough
 ;'
 LANGUAGE SQL
 IMMUTABLE
@@ -271,31 +269,23 @@ RETURNS numeric AS
 LANGUAGE SQL
 ;
 
-CREATE OR REPLACE VIEW pita AS
-SELECT bakers_percent, ingredient_name AS ingredient, 
-       ROUND(get_batch_weight('pita bread') * 
-       bakers_percent / bak_per(), 0) AS overall
-FROM dough_ingredient_list
-WHERE dough_name = 'pita bread';
-
-CREATE OR REPLACE VIEW kamut AS
-SELECT bakers_percent, ingredient_name AS ingredient, 
-       ROUND(get_batch_weight('Kamut Sourdough') * bakers_percent / 
-       bak_per(), 0) AS overall,
-       ROUND(get_batch_weight('Kamut Sourdough') * bakers_percent / 
-       bak_per() * percent_of_ingredient_total /100, 0) AS sour,
-       ROUND(get_batch_weight('Kamut Sourdough') * bakers_percent / bak_per() - 
-       COALESCE ((get_batch_weight('Kamut Sourdough') * bakers_percent / bak_per() 
-       * percent_of_ingredient_total / 100), 0), 0) AS final 
-FROM dough_ingredient_list             
-WHERE dough_name = 'Kamut Sourdough';
-
-
-CREATE OR REPLACE VIEW formula AS 
-SELECT bakers_percent, ingredient_name AS ingredient, 
-       ROUND(get_batch_weight(:'myvar') * bakers_percent / bak_per(), 0) AS overall
-FROM dough_ingredient_list
-WHERE dough_name = :'myvar';
+CREATE OR REPLACE FUNCTION formula(my_dough_id integer) 
+       RETURNS TABLE(bakers_percent numeric, ingredient character varying, 
+       overall numeric, sour numeric, final numeric) AS $$
+       BEGIN
+             RETURN QUERY
+                 SELECT dil.bakers_percent, dil.ingredient_name, 
+                 ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent / 
+                 bak_per(), 0),
+                 ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent / 
+                 bak_per() * dil.percent_of_ingredient_total /100, 0),
+                 ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent / bak_per() - 
+                 COALESCE ((get_batch_weight(my_dough_id) * dil.bakers_percent / bak_per() 
+                 * dil.percent_of_ingredient_total / 100), 0), 0) 
+                 FROM dough_ingredient_list AS dil
+                 WHERE dil.dough_id = my_dough_id;
+       END;
+$$ LANGUAGE plpgsql;
 
 INSERT INTO zip_codes (zip, city, state)
 VALUES (53705, 'Madison', 'WI'),
