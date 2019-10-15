@@ -268,7 +268,7 @@ CREATE OR REPLACE FUNCTION formula(my_dough_id integer)
                     ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent /
                           bak_per(my_dough_id) * dil.percent_in_sour /100, 0),
                     ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent /
-                          bak_per(my_dough_id) * dil.percent_in_poolish /100, 0),
+                          bak_per(my_dough_id) * dil.percent_in_poolish /100, 1),
                     ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent /
                           bak_per(my_dough_id) * dil.percent_in_soaker /100, 0),
                     ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent /
@@ -398,8 +398,8 @@ INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent,
             (1, 11, 30, 0, 0, 0),
             (1, 12, 30, 0, 0, 0),
             (5, 1, 50, 0, 0, 0),
-            (5, 4, 50, 6, 0, 0),
-            (5, 6, 60, 2.9, 0, 0),
+            (5, 4, 50, 5.4, 0, 0),
+            (5, 6, 64, 2.4, 0, 0),
             (5, 8, 1.9, 0, 0, 0),
             (2, 5, 80, 0, 25, 0),
             (2, 2, 10, 0, 0, 0),
