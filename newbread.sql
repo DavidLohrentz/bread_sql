@@ -113,9 +113,9 @@ CREATE TABLE dough_shape_weights (
 CREATE TABLE dough_ingredients (
     dough_id INTEGER NOT NULL REFERENCES doughs(dough_id),
     ingredient_id INTEGER NOT NULL REFERENCES ingredients(ingredient_id),
-    bakers_percent NUMERIC (4, 1) NOT NULL,
+    bakers_percent NUMERIC (5, 2) NOT NULL,
     percent_in_sour NUMERIC NOT NULL,
-    percent_in_poolish NUMERIC NOT NULL,
+    percent_in_poolish NUMERIC (5, 2)NOT NULL,
     percent_in_soaker NUMERIC NOT NULL,
     PRIMARY KEY (dough_id, ingredient_id)
 );
@@ -406,7 +406,7 @@ INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent,
             (2, 7, 10, 0, 0, 0),
             (2, 6, 68, 0, 20, 0),
             (2, 8, 1.9, 0, 0, 0),
-            (2, 10, .05, 0, 100, 0)
+            (2, 10, .04, 0, 100, 0)
 ;
             
             --special_orders
