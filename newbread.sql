@@ -4,7 +4,7 @@ SET timezone = 'US/Central';
 
 DROP VIEW IF EXISTS phone_book, staff_list,
      ingredient_list, people_list, shape_list,
-     bp, ein_list, todays_orders, dough_info,
+     ein_list, todays_orders, dough_info,
      todays_order_summary
 ;
 
@@ -196,13 +196,6 @@ SELECT d.dough_name AS dough, s.shape_name AS shape,
   Join shapes as s on dsw.shape_id = s.shape_id;
 
 
-CREATE OR REPLACE VIEW bp AS 
-SELECT di.dough_id, di.bakers_percent, d.dough_name, i.ingredient_name  
-  FROM dough_ingredients AS di
-  JOIN doughs AS d on di.dough_id = d.dough_id
-  JOIN ingredients AS i ON di.ingredient_id = i.ingredient_id;
-
-
 CREATE OR REPLACE VIEW ein_list AS 
 SELECT p.party_name as name, ei.ein FROM emp_id_numbs AS ei 
   JOIN parties AS p on ei.party_id = p.party_id 
@@ -218,7 +211,8 @@ SELECT d.dough_id, p.party_name AS customer, so.delivery_date,
   JOIN doughs AS d ON d.dough_id = dsw.dough_id
   JOIN shapes AS s ON s.shape_id = dsw.shape_id
   JOIN special_orders as so ON so.dough_id = dsw.dough_id
-  JOIN parties AS p on so.customer_id = p.party_id AND so.customer_type = p.party_type
+  JOIN parties AS p on so.customer_id = p.party_id 
+       AND so.customer_type = p.party_type
  WHERE now()::date + d.lead_time_days = delivery_date;
 
 CREATE OR REPLACE VIEW todays_order_summary AS 
@@ -347,7 +341,9 @@ INSERT INTO ingredients (ingredient_name, manufacturer_id, manufacturer_type, is
             ('High Extraction Flour', 3, 'o', TRUE),
             ('Sea Salt', 8, 'o', FALSE),
             ('leaven', 1, 'i', FALSE),
-            ('saf-instant yeast', '9', 'o', FALSE)
+            ('saf-instant yeast', '9', 'o', FALSE),
+            ('dried cranberries', 6, 'o', FALSE),
+            ('walnuts', 6, 'o', FALSE)
 ;
 
 INSERT INTO staff_st (party_id, party_type, ssn, is_active, hire_date,
@@ -382,6 +378,7 @@ INSERT INTO dough_shape_weights (dough_id, shape_id, dough_shape_grams)
      VALUES (4, 1, 1600),
             (3, 2, 1280),
             (5, 4, 105),
+            (1, 1, 1600),
             (2, 3, 400)
 ;
 
@@ -393,6 +390,13 @@ INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent,
             (4, 7, 30, 33, 0, 20),
             (4, 6, 80, 20, 0, 18),
             (4, 8, 1.9, 0, 0, 0),
+            (1, 2, 40, 0, 0, 20),
+            (1, 4, 30, 33, 0, 0),
+            (1, 7, 30, 33, 0, 20),
+            (1, 6, 70, 20, 0, 18),
+            (1, 8, 2.2, 0, 0, 0),
+            (1, 11, 30, 0, 0, 0),
+            (1, 12, 30, 0, 0, 0),
             (5, 1, 50, 0, 0, 0),
             (5, 4, 50, 6, 0, 0),
             (5, 6, 60, 2.9, 0, 0),
@@ -427,6 +431,11 @@ INSERT INTO special_orders (delivery_date, customer_id, customer_type, dough_id,
 
         --rugbrod
             ((SELECT now()::date + interval '2 days'), 1, 'i', 3, 2, 2,
+            (SELECT now())),
+
+        --cranberry walnut
+            ((SELECT now()::date + interval '2 days'), 1, 'i', 1, 1, 1,
             (SELECT now()))
+
 ;
 
