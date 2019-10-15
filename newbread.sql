@@ -281,7 +281,7 @@ CREATE OR REPLACE FUNCTION formula(my_dough_id integer)
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION phone_search(name_snippet VARCHAR)
-       RETURNS TABLE (name VARCHAR, phone_no text, phone_type VARCHAR) AS $$
+       RETURNS TABLE (name VARCHAR, phone_type text, phone_no VARCHAR) AS $$
        BEGIN
               RETURN QUERY
                  SELECT pb.name, pb.type, pb.phone_no
