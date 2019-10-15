@@ -209,13 +209,14 @@ SELECT p.party_name as name, ei.ein FROM emp_id_numbs AS ei
 
 
 CREATE OR REPLACE VIEW todays_orders AS 
-SELECT d.dough_id, so.delivery_date, d.lead_time_days AS lead_time, so.amt, 
+SELECT d.dough_id, p.party_name AS customer, so.delivery_date, d.lead_time_days AS lead_time, so.amt, 
        d.dough_name, s.shape_name, dsw.dough_shape_grams AS grams
     
   FROM dough_shape_weights AS dsw 
   JOIN doughs AS d ON d.dough_id = dsw.dough_id
   JOIN shapes AS s ON s.shape_id = dsw.shape_id
   JOIN special_orders as so ON so.dough_id = dsw.dough_id
+  JOIN parties AS p on so.customer_id = p.party_id AND so.customer_type = p.party_type
  WHERE now()::date + d.lead_time_days = delivery_date;
 
 CREATE OR REPLACE FUNCTION
