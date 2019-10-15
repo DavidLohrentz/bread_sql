@@ -280,13 +280,13 @@ CREATE OR REPLACE FUNCTION formula(my_dough_id integer)
       END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION phone_search(name_snippet character varying)
-       RETURNS TABLE (who character varying, phone_no text, phone_type character varying) AS $$
+CREATE OR REPLACE FUNCTION phone_search(name_snippet VARCHAR)
+       RETURNS TABLE (name VARCHAR, phone_no text, phone_type VARCHAR) AS $$
        BEGIN
               RETURN QUERY
                  SELECT pb.name, pb.type, pb.phone_no
                  FROM phone_book AS pb
-                 WHERE pb.name ILIKE '%name_snippet%';
+                 WHERE pb.name ILIKE name_snippet;
        END;
 $$ LANGUAGE plpgsql;
 
@@ -406,7 +406,7 @@ INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent,
             (2, 7, 10, 0, 0, 0),
             (2, 6, 68, 0, 20, 0),
             (2, 8, 1.9, 0, 0, 0),
-            (2, 10, .04, 0, 100, 0)
+            (2, 10, .05, 0, 100, 0)
 ;
             
             --special_orders
