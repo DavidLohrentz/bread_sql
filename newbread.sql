@@ -4,7 +4,8 @@ SET timezone = 'US/Central';
 
 DROP VIEW IF EXISTS phone_book, staff_list,
      ingredient_list, people_list, shape_list,
-     bp, ein_list, todays_orders, dough_info
+     bp, ein_list, todays_orders, dough_info,
+     todays_order_summary
 ;
 
 DROP FUNCTION IF EXISTS get_orders, get_batch_weight,
@@ -209,7 +210,8 @@ SELECT p.party_name as name, ei.ein FROM emp_id_numbs AS ei
 
 
 CREATE OR REPLACE VIEW todays_orders AS 
-SELECT d.dough_id, p.party_name AS customer, so.delivery_date, d.lead_time_days AS lead_time, so.amt, 
+SELECT d.dough_id, p.party_name AS customer, so.delivery_date, 
+       d.lead_time_days AS lead_time, so.amt, 
        d.dough_name, s.shape_name, dsw.dough_shape_grams AS grams
     
   FROM dough_shape_weights AS dsw 
@@ -218,6 +220,13 @@ SELECT d.dough_id, p.party_name AS customer, so.delivery_date, d.lead_time_days 
   JOIN special_orders as so ON so.dough_id = dsw.dough_id
   JOIN parties AS p on so.customer_id = p.party_id AND so.customer_type = p.party_type
  WHERE now()::date + d.lead_time_days = delivery_date;
+
+CREATE OR REPLACE VIEW todays_order_summary AS 
+SELECT dough_id, dough_name, sum(amt * grams) AS total_grams
+  FROM todays_orders
+ GROUP BY dough_name, dough_id
+ ORDER BY dough_id;
+
 
 CREATE OR REPLACE FUNCTION
 get_orders(which_dough INTEGER)
