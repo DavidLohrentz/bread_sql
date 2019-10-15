@@ -4,19 +4,17 @@ SET timezone = 'US/Central';
 
 DROP VIEW IF EXISTS phone_book, staff_list,
      ingredient_list, people_list, shape_list,
-     bp, ein_list, todays_orders, dough_ingredient_list,
-     dough_ingredient_list1, preferment_tab
+     bp, ein_list, todays_orders, dough_info
 ;
 
 DROP FUNCTION IF EXISTS get_orders, get_batch_weight,
-     bak_per, formula, phone_search, formula1
+     bak_per, formula, phone_search
 ;
 
 DROP TABLE IF EXISTS parties, people_st, staff_st, 
      organization_st, phones, zip_codes, doughs,
      shapes, ingredients, dough_shape_weights,
-     dough_ingredients, preferments, dough_preferments,
-     special_orders, emp_id_numbs
+     dough_ingredients, special_orders, emp_id_numbs
 ;
 
 CREATE TABLE parties (
@@ -38,11 +36,6 @@ CREATE TABLE zip_codes (
        zip CHAR(5) PRIMARY KEY,
        city VARCHAR(70) NOT NULL,
        state CHAR(2) NOT NULL
-);
-
-CREATE TABLE preferments (
-       preferment_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-       preferment VARCHAR(50) UNIQUE NOT NULL
 );
 
 -- For "staff, a subtype of people
@@ -101,17 +94,6 @@ CREATE TABLE doughs (
     lead_time_days INTEGER NOT NULL
 );
 
-CREATE TABLE dough_preferments (
-       dough_id INTEGER NOT NULL
-             REFERENCES doughs(dough_id),
-       preferment_id INTEGER NOT NULL
-                  REFERENCES preferments(preferment_id),
-       ingredient_id INTEGER NOT NULL
-                  REFERENCES ingredients(ingredient_id),
-       percent_of_ingredient_total NUMERIC,
-       PRIMARY KEY (dough_id, preferment_id, ingredient_id)
-);
-
 CREATE TABLE shapes (
     shape_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     shape_name VARCHAR(70) UNIQUE NOT NULL
@@ -131,6 +113,9 @@ CREATE TABLE dough_ingredients (
     dough_id INTEGER NOT NULL REFERENCES doughs(dough_id),
     ingredient_id INTEGER NOT NULL REFERENCES ingredients(ingredient_id),
     bakers_percent NUMERIC (4, 1) NOT NULL,
+    percent_in_sour NUMERIC NOT NULL,
+    percent_in_poolish NUMERIC NOT NULL,
+    percent_in_soaker NUMERIC NOT NULL,
     PRIMARY KEY (dough_id, ingredient_id)
 );
 
@@ -176,6 +161,7 @@ name_join (party_id, new_name) AS
      FROM parties AS p
           FULL JOIN people_st as pe on p.party_id = pe.party_id)
 
+
 SELECT ph.party_id, nm.new_name AS name, p.party_type, t.type, ph.phone_no
   FROM phones AS ph
   JOIN name_join as nm on ph.party_id = nm.party_id
@@ -183,6 +169,7 @@ SELECT ph.party_id, nm.new_name AS name, p.party_type, t.type, ph.phone_no
   JOIN parties AS p on ph.party_id = p.party_id
   LEFT JOIN people_st AS pe ON ph.party_id = pe.party_id
  ORDER BY ph.party_id, t.type;
+
 
 CREATE OR REPLACE VIEW staff_list AS 
 SELECT s.party_id, pe.first_name, p.party_name AS last_name, 
@@ -201,24 +188,12 @@ SELECT pe.party_id, pe.first_name, p.party_name AS last_name
   JOIN parties AS p ON pe.party_id = p.party_id
 ;
 
-CREATE OR REPLACE VIEW preferment_tab AS
-select dp.dough_id, dp.preferment_id, dp.ingredient_id, 
-       CASE when dp.preferment_id = 1 THEN dp.percent_of_ingredient_total
-            ELSE null
-       END AS sour,
-       CASE when dp.preferment_id = 2 THEN dp.percent_of_ingredient_total
-            ELSE null
-       END AS poolish,
-       CASE when dp.preferment_id = 3 THEN dp.percent_of_ingredient_total
-            ELSE null
-       END AS soaker
-  FROM dough_preferments AS dp;
-
 CREATE OR REPLACE VIEW shape_list AS 
 SELECT d.dough_name AS dough, s.shape_name AS shape, 
        dough_shape_grams AS grams FROM dough_shape_weights as dsw
   JOIN doughs AS d on dsw.dough_id = d.dough_id
   Join shapes as s on dsw.shape_id = s.shape_id;
+
 
 CREATE OR REPLACE VIEW bp AS 
 SELECT di.dough_id, di.bakers_percent, d.dough_name, i.ingredient_name  
@@ -226,10 +201,12 @@ SELECT di.dough_id, di.bakers_percent, d.dough_name, i.ingredient_name
   JOIN doughs AS d on di.dough_id = d.dough_id
   JOIN ingredients AS i ON di.ingredient_id = i.ingredient_id;
 
+
 CREATE OR REPLACE VIEW ein_list AS 
 SELECT p.party_name as name, ei.ein FROM emp_id_numbs AS ei 
   JOIN parties AS p on ei.party_id = p.party_id 
        AND ei.party_type = p.party_type;
+
 
 CREATE OR REPLACE VIEW todays_orders AS 
 SELECT d.dough_id, so.delivery_date, d.lead_time_days AS lead_time, so.amt, 
@@ -263,44 +240,40 @@ LANGUAGE SQL
 IMMUTABLE
 RETURNS NULL ON NULL INPUT;
 
-CREATE OR REPLACE VIEW dough_ingredient_list AS 
-SELECT d.dough_id, di.bakers_percent, d.dough_name, 
-       i.ingredient_name, i.is_flour, pr.preferment, 
-       dp.percent_of_ingredient_total 
-  FROM dough_ingredients as di
-  JOIN ingredients AS i
-       ON di.ingredient_id = i.ingredient_id
-  LEFT JOIN dough_preferments as dp
-       ON di.dough_id = dp.dough_id AND i.ingredient_id = dp.ingredient_id
-  FULL JOIN preferments AS pr ON dp.preferment_id = pr.preferment_id
-  JOIN doughs AS d on di.dough_id = d.dough_id
- ORDER BY d.dough_id
-;
+CREATE OR REPLACE VIEW dough_info AS 
+SELECT di.dough_id, di.bakers_percent, i.ingredient_name AS ingredient, i.is_flour, 
+       di.percent_in_sour, di.percent_in_poolish, di.percent_in_soaker
+  FROM dough_ingredients AS di
+  JOIN ingredients AS i ON di.ingredient_id = i.ingredient_id
+ ORDER BY di.dough_id, i.is_flour DESC, di.bakers_percent DESC;
 
-CREATE OR REPLACE FUNCTION bak_per()
-RETURNS numeric AS
-     'SELECT sum(bakers_percent) OVER (PARTITION BY dough_id)
-       FROM dough_ingredient_list;'
-LANGUAGE SQL
-;
+CREATE OR REPLACE FUNCTION bak_per(which_doe integer)
+  returns numeric AS
+          'SELECT sum(bakers_percent) OVER (PARTITION BY dough_id)
+          FROM dough_info WHERE dough_id = which_doe;'
+ LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION formula(my_dough_id integer) 
-       RETURNS TABLE (dough character varying, bakers_percent numeric, ingredient character varying, 
-       overall numeric, sour numeric, final numeric) AS $$
+CREATE OR REPLACE FUNCTION formula(my_dough_id integer)
+       RETURNS TABLE (dough character varying, "%" numeric, ingredient character varying,
+       overall numeric, sour numeric, poolish numeric, soaker numeric, final numeric) AS $$
        BEGIN
              RETURN QUERY
-                 SELECT d.dough_name, dil.bakers_percent, dil.ingredient_name, 
-                 ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent / 
-                 bak_per(), 0),
-                 ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent / 
-                 bak_per() * dil.percent_of_ingredient_total /100, 0),
-                 ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent / bak_per() - 
-                 COALESCE ((get_batch_weight(my_dough_id) * dil.bakers_percent / bak_per() 
-                 * dil.percent_of_ingredient_total / 100), 0), 0) 
-                 FROM dough_ingredient_list AS dil
-                 JOIN doughs AS d on dil.dough_id = d.dough_id
-                 WHERE dil.dough_id = my_dough_id;
-       END;
+                    SELECT d.dough_name, dil.bakers_percent, dil.ingredient,
+                    ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent /
+                          bak_per(my_dough_id), 0),
+                    ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent /
+                          bak_per(my_dough_id) * dil.percent_in_sour /100, 0),
+                    ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent /
+                          bak_per(my_dough_id) * dil.percent_in_poolish /100, 0),
+                    ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent /
+                          bak_per(my_dough_id) * dil.percent_in_soaker /100, 0),
+                    ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent /
+                          bak_per(my_dough_id) * (1- (dil.percent_in_sour + 
+                          dil.percent_in_poolish + dil.percent_in_soaker)/100), 0)
+                    FROM dough_info AS dil
+                    JOIN doughs AS d on dil.dough_id = d.dough_id
+                    WHERE dil.dough_id = my_dough_id;
+      END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION phone_search(name_snippet character varying)
@@ -334,13 +307,6 @@ VALUES ('i', 'mylast'),
 INSERT INTO people_st (party_id, party_type, first_name)
 VALUES (1, 'i', 'myfirst'),
        (2, 'i', 'Foo')
-;
-
-            --preferments
-INSERT INTO preferments (preferment)
-     VALUES ('sour'),
-            ('poolish'),
-            ('soaker')
 ;
 
             --shapes
@@ -410,39 +376,25 @@ INSERT INTO dough_shape_weights (dough_id, shape_id, dough_shape_grams)
 ;
 
             --dough_ingredients
-INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent)
-     VALUES (4, 2, 40),
-            (4, 4, 30),
-            (4, 7, 30),
-            (4, 6, 80),
-            (4, 8, 1.9),
-            (5, 1, 50),
-            (5, 4, 50),
-            (5, 6, 60),
-            (5, 8, 1.9),
-            (2, 5, 80),
-            (2, 2, 10),
-            (2, 7, 10),
-            (2, 6, 68),
-            (2, 10, .05)
+INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent,
+            percent_in_sour, percent_in_poolish, percent_in_soaker)
+     VALUES (4, 2, 40, 0, 0, 20),
+            (4, 4, 30, 33, 0, 0),
+            (4, 7, 30, 33, 0, 20),
+            (4, 6, 80, 20, 0, 18),
+            (4, 8, 1.9, 0, 0, 0),
+            (5, 1, 50, 0, 0, 0),
+            (5, 4, 50, 6, 0, 0),
+            (5, 6, 60, 2.9, 0, 0),
+            (5, 8, 1.9, 0, 0, 0),
+            (2, 5, 80, 0, 25, 0),
+            (2, 2, 10, 0, 0, 0),
+            (2, 7, 10, 0, 0, 0),
+            (2, 6, 68, 0, 20, 0),
+            (2, 8, 1.9, 0, 0, 0),
+            (2, 10, .05, 0, 100, 0)
 ;
             
-            --dough_preferments
-INSERT INTO dough_preferments (dough_id, preferment_id, ingredient_id,
-            percent_of_ingredient_total)
-     VALUES (4, 1, 4, 33 ),
-            (4, 1, 7, 33 ),
-            (4, 1, 6, 20 ),
-            (4, 3, 2, 20),
-            (4, 3, 7, 20),
-            (4, 3, 6, 18),
-            (5, 1, 4, 6 ),
-            (5, 1, 6, 2.9 ),
-            (2, 2, 5, 25),
-            (2, 2, 6, 20),
-            (2, 2, 10, 100)
-;
-
             --special_orders
 INSERT INTO special_orders (delivery_date, customer_id, customer_type, dough_id,
             shape_id, amt, order_created_at)
