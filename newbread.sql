@@ -8,7 +8,7 @@ DROP VIEW IF EXISTS phone_book, staff_list,
      todays_order_summary
 ;
 
-DROP FUNCTION IF EXISTS get_orders, get_batch_weight,
+DROP FUNCTION IF EXISTS get_batch_weight,
      bak_per, formula, phone_search
 ;
 
@@ -222,17 +222,6 @@ SELECT dough_id, dough_name, sum(amt * grams) AS total_grams
  GROUP BY dough_name, dough_id
  ORDER BY dough_id;
 
-
-CREATE OR REPLACE FUNCTION
-get_orders(which_dough INTEGER)
-RETURNS BIGINT AS
-'SELECT sum(amt)
-   FROM todays_orders
-  WHERE dough_id = which_dough
-;'
-LANGUAGE SQL
-IMMUTABLE
-RETURNS NULL ON NULL INPUT;
 
 CREATE OR REPLACE FUNCTION
 get_batch_weight(which_dough INTEGER)
