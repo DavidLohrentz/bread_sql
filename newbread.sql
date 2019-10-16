@@ -160,7 +160,7 @@ name_join (party_id, new_name) AS
        ELSE p.party_name
        END 
      FROM parties AS p
-          FULL JOIN people_st as pe on p.party_id = pe.party_id)
+     FULL JOIN people_st as pe on p.party_id = pe.party_id)
 
 
 SELECT ph.party_id, nm.new_name AS name, p.party_type, t.type, ph.phone_no
@@ -211,6 +211,7 @@ SELECT d.dough_id, p.party_name AS customer, so.delivery_date,
   JOIN doughs AS d ON d.dough_id = dsw.dough_id
   JOIN shapes AS s ON s.shape_id = dsw.shape_id
   JOIN special_orders as so ON so.dough_id = dsw.dough_id
+       AND s.shape_id = so.shape_id
   JOIN parties AS p on so.customer_id = p.party_id 
        AND so.customer_type = p.party_type
  WHERE now()::date + d.lead_time_days = delivery_date;
@@ -280,6 +281,7 @@ CREATE OR REPLACE FUNCTION formula(my_dough_id integer)
       END;
 $$ LANGUAGE plpgsql;
 
+       --Useage: SELECT * FROM phone_search('mad%');
 CREATE OR REPLACE FUNCTION phone_search(name_snippet VARCHAR)
        RETURNS TABLE (name VARCHAR, phone_type text, phone_no VARCHAR) AS $$
        BEGIN
@@ -318,12 +320,13 @@ INSERT INTO shapes (shape_name)
      VALUES ('12" Boule'),
             ('4" pan loaves'),
             ('16" pizza'),
-            ('7" pita')
+            ('7" pita'),
+            ('hard rolls')
 ;
 
             --doughs
 INSERT INTO doughs (dough_name, lead_time_days)
-     VALUES ('cranberry walnut Sourdough', 2),
+     VALUES ('cranberry walnut', 2),
             ('pizza dough', 1),
             ('rugbrod', 2),
             ('Kamut Sourdough', 2),
@@ -379,6 +382,7 @@ INSERT INTO dough_shape_weights (dough_id, shape_id, dough_shape_grams)
             (3, 2, 1280),
             (5, 4, 105),
             (1, 1, 1600),
+            (1, 5, 120),
             (2, 3, 400)
 ;
 
@@ -431,6 +435,10 @@ INSERT INTO special_orders (delivery_date, customer_id, customer_type, dough_id,
 
         --rugbrod
             ((SELECT now()::date + interval '2 days'), 1, 'i', 3, 2, 2,
+            (SELECT now())),
+
+        --cranberry walnut
+            ((SELECT now()::date + interval '2 days'), 1, 'i', 1, 5, 4,
             (SELECT now())),
 
         --cranberry walnut
