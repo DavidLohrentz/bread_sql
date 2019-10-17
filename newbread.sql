@@ -9,13 +9,14 @@ DROP VIEW IF EXISTS phone_book, staff_list,
 ;
 
 DROP FUNCTION IF EXISTS get_batch_weight,
-     bak_per, formula, phone_search
+     bak_per, formula, phone_search, get_dow
 ;
 
 DROP TABLE IF EXISTS parties, people_st, staff_st, 
      organization_st, phones, zip_codes, doughs,
      shapes, ingredients, dough_shape_weights,
-     dough_ingredients, special_orders, emp_id_numbs
+     dough_ingredients, special_orders, emp_id_numbs,
+     standing_orders, holds
 ;
 
 CREATE TABLE parties (
@@ -133,6 +134,39 @@ CREATE TABLE special_orders (
        order_created_at TIMESTAMPTZ DEFAULT now(),
        FOREIGN KEY (customer_id, customer_type) 
                references parties (party_id, party_type)
+);
+
+CREATE TABLE standing_orders (
+       day_of_week CHAR(3) check (day_of_week IN (
+           'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')) NOT NULL,
+       customer_id INTEGER NOT NULL,
+       customer_type char(1) check (customer_type in ('i', 'o')) NOT NULL,
+       dough_id INTEGER NOT NULL
+             REFERENCES doughs(dough_id),
+       shape_id INTEGER NOT NULL
+             REFERENCES shapes(shape_id),
+       amt INTEGER NOT NULL,
+       order_created_at TIMESTAMPTZ DEFAULT now(),
+       PRIMARY KEY (day_of_week, customer_id, dough_id, shape_id),
+       FOREIGN KEY (customer_id, customer_type) 
+               references parties (party_id, party_type)
+);
+
+CREATE TABLE holds (
+       hold_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+       day_of_week CHAR(3) check (day_of_week IN (
+           'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')) NOT NULL,
+       customer_id INTEGER NOT NULL,
+       dough_id INTEGER NOT NULL
+             REFERENCES doughs(dough_id),
+       shape_id INTEGER NOT NULL
+             REFERENCES shapes(shape_id),
+       start_date DATE NOT NULL,
+       resume_date DATE,
+       decrease_percent INTEGER NOT NULL check (decrease_percent <=100
+                        AND decrease_percent >=0),
+       FOREIGN KEY (day_of_week, customer_id, dough_id, shape_id)
+               REFERENCES standing_orders (day_of_week, customer_id, dough_id, shape_id)
 );
 
 CREATE OR REPLACE VIEW ingredient_list AS 
@@ -405,7 +439,7 @@ INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent,
             --special_orders
 INSERT INTO special_orders (delivery_date, customer_id, customer_type, dough_id,
             shape_id, amt, order_created_at)
-     VALUES 
+       VALUES 
         --kamut
             ((SELECT now()::date + interval '2 days'), 1, 'i', 4, 1, 1,
             (SELECT now())),
@@ -436,3 +470,26 @@ INSERT INTO special_orders (delivery_date, customer_id, customer_type, dough_id,
 
 ;
 
+INSERT INTO standing_orders (day_of_week, customer_id, customer_type, dough_id,
+            shape_id, amt, order_created_at)
+       VALUES 
+            --kamut
+            ('Mon', 1, 'i', 4, 1, 1, (SELECT now())),
+            ('Tue', 1, 'i', 4, 1, 1, (SELECT now())),
+            ('Wed', 1, 'i', 4, 1, 1, (SELECT now())),
+            ('Thu', 1, 'i', 4, 1, 1, (SELECT now())),
+            ('Fri', 1, 'i', 4, 1, 1, (SELECT now())),
+            ('Sat', 1, 'i', 4, 1, 1, (SELECT now())),
+            ('Sun', 1, 'i', 4, 1, 1, (SELECT now()))
+;
+
+INSERT INTO holds (day_of_week, customer_id, dough_id, shape_id, start_date, resume_date, decrease_percent)
+       VALUES
+            ('Mon', 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+            ('Tue', 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+            ('Wed', 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+            ('Thu', 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+            ('Fri', 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+            ('Sat', 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+            ('Sun', 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100)
+;
