@@ -16,7 +16,7 @@ DROP TABLE IF EXISTS parties, people_st, staff_st,
      organization_st, phones, zip_codes, doughs,
      shapes, ingredients, dough_shape_weights,
      dough_ingredients, special_orders, emp_id_numbs,
-     standing_orders, holds
+     standing_orders, holds, days_of_week
 ;
 
 CREATE TABLE parties (
@@ -136,9 +136,15 @@ CREATE TABLE special_orders (
                references parties (party_id, party_type)
 );
 
+CREATE TABLE days_of_week (
+       dow_id SMALLINT PRIMARY KEY check (dow_id > 0 AND dow_id <= 7),
+       dow_names CHAR(3) NOT NULL check (dow_names in ('Mon', 'Tue',
+                 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
+));
+
 CREATE TABLE standing_orders (
-       day_of_week CHAR(3) check (day_of_week IN (
-           'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')) NOT NULL,
+       day_of_week SMALLINT check (day_of_week IN (
+           1, 2, 3, 4, 5, 6, 7)) NOT NULL REFERENCES days_of_week(dow_id),
        customer_id INTEGER NOT NULL,
        customer_type char(1) check (customer_type in ('i', 'o')) NOT NULL,
        dough_id INTEGER NOT NULL
@@ -154,8 +160,8 @@ CREATE TABLE standing_orders (
 
 CREATE TABLE holds (
        hold_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-       day_of_week CHAR(3) check (day_of_week IN (
-           'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')) NOT NULL,
+       day_of_week SMALLINT check (day_of_week IN (
+           1, 2, 3, 4, 5, 6, 7)) NOT NULL,
        customer_id INTEGER NOT NULL,
        dough_id INTEGER NOT NULL
              REFERENCES doughs(dough_id),
@@ -470,26 +476,37 @@ INSERT INTO special_orders (delivery_date, customer_id, customer_type, dough_id,
 
 ;
 
+INSERT INTO days_of_week (dow_id, dow_names)
+       VALUES
+            (1, 'Mon'),
+            (2, 'Tue'),
+            (3, 'Wed'),
+            (4, 'Thu'),
+            (5, 'Fri'),
+            (6, 'Sat'),
+            (7, 'Sun')
+;
+
 INSERT INTO standing_orders (day_of_week, customer_id, customer_type, dough_id,
             shape_id, amt, order_created_at)
        VALUES 
             --kamut
-            ('Mon', 1, 'i', 4, 1, 1, (SELECT now())),
-            ('Tue', 1, 'i', 4, 1, 1, (SELECT now())),
-            ('Wed', 1, 'i', 4, 1, 1, (SELECT now())),
-            ('Thu', 1, 'i', 4, 1, 1, (SELECT now())),
-            ('Fri', 1, 'i', 4, 1, 1, (SELECT now())),
-            ('Sat', 1, 'i', 4, 1, 1, (SELECT now())),
-            ('Sun', 1, 'i', 4, 1, 1, (SELECT now()))
+            (1, 1, 'i', 4, 1, 1, (SELECT now())),
+            (2, 1, 'i', 4, 1, 1, (SELECT now())),
+            (3, 1, 'i', 4, 1, 1, (SELECT now())),
+            (4, 1, 'i', 4, 1, 1, (SELECT now())),
+            (5, 1, 'i', 4, 1, 1, (SELECT now())),
+            (6, 1, 'i', 4, 1, 1, (SELECT now())),
+            (7, 1, 'i', 4, 1, 1, (SELECT now()))
 ;
 
 INSERT INTO holds (day_of_week, customer_id, dough_id, shape_id, start_date, resume_date, decrease_percent)
        VALUES
-            ('Mon', 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
-            ('Tue', 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
-            ('Wed', 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
-            ('Thu', 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
-            ('Fri', 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
-            ('Sat', 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
-            ('Sun', 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100)
+            (1, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+            (2, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+            (3, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+            (4, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+            (5, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+            (6, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+            (7, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100)
 ;
