@@ -9,15 +9,28 @@ DROP VIEW IF EXISTS phone_book, staff_list,
 ;
 
 DROP FUNCTION IF EXISTS get_batch_weight,
-     bak_per, formula, phone_search, get_dow
+     bak_per, formula, phone_search, get_dow,
+     percent_change
 ;
 
 DROP TABLE IF EXISTS parties, people_st, staff_st, 
      organization_st, phones, zip_codes, doughs,
-     shapes, ingredients, dough_shape_weights,
-     dough_ingredients, special_orders, emp_id_numbs,
+     shapes, ingredients, dough_shapes,
+     dough_ingredients, special_orders, ein_numbs,
      standing_orders, holds, days_of_week
 ;
+
+CREATE OR REPLACE FUNCTION 
+       percent_change(second_value numeric,
+                      first_value numeric,
+                      dec_places INT DEFAULT 1)
+       RETURNS numeric AS
+               'SELECT ROUND(
+               ((second_value - first_value) / first_value
+               ) * 100, dec_places);'
+LANGUAGE SQL
+IMMUTABLE
+RETURNS NULL ON NULL INPUT;
 
 CREATE TABLE parties (
        party_id INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -65,7 +78,7 @@ CREATE TABLE organization_st (
        FOREIGN KEY (party_id, party_type) references parties (party_id, party_type))
 ;
 
-CREATE TABLE emp_id_numbs (
+CREATE TABLE ein_numbs (
        party_id INTEGER PRIMARY KEY,
        party_type CHAR(1) default 'o' check (party_type = 'o') NOT NULL,
        ein CHAR(11) UNIQUE NOT NULL,
@@ -102,12 +115,12 @@ CREATE TABLE shapes (
 );
 
 -- Doughs may be divided into multiple shapes with different weights
-CREATE TABLE dough_shape_weights (
+CREATE TABLE dough_shapes (
     dough_id INTEGER NOT NULL
              REFERENCES doughs(dough_id),
     shape_id INTEGER NOT NULL
              REFERENCES shapes(shape_id),
-    dough_shape_grams INTEGER NOT NULL,
+    ds_grams INTEGER NOT NULL,
     PRIMARY KEY (dough_id, shape_id)
 );
 
@@ -231,13 +244,13 @@ SELECT pe.party_id, pe.first_name, p.party_name AS last_name
 
 CREATE OR REPLACE VIEW shape_list AS 
 SELECT d.dough_name AS dough, s.shape_name AS shape, 
-       dough_shape_grams AS grams FROM dough_shape_weights as dsw
+       ds_grams AS grams FROM dough_shapes as dsw
   JOIN doughs AS d on dsw.dough_id = d.dough_id
   Join shapes as s on dsw.shape_id = s.shape_id;
 
 
 CREATE OR REPLACE VIEW ein_list AS 
-SELECT p.party_name as name, ei.ein FROM emp_id_numbs AS ei 
+SELECT p.party_name as name, ei.ein FROM ein_numbs AS ei 
   JOIN parties AS p on ei.party_id = p.party_id 
        AND ei.party_type = p.party_type;
 
@@ -245,9 +258,9 @@ SELECT p.party_name as name, ei.ein FROM emp_id_numbs AS ei
 CREATE OR REPLACE VIEW todays_orders AS 
 SELECT d.dough_id, p.party_name AS customer, so.delivery_date, 
        d.lead_time_days AS lead_time, so.amt, 
-       d.dough_name, s.shape_name, dsw.dough_shape_grams AS grams
+       d.dough_name, s.shape_name, dsw.ds_grams AS grams
     
-  FROM dough_shape_weights AS dsw 
+  FROM dough_shapes AS dsw 
   JOIN doughs AS d ON d.dough_id = dsw.dough_id
   JOIN shapes AS s ON s.shape_id = dsw.shape_id
   JOIN special_orders as so ON so.dough_id = dsw.dough_id
@@ -285,7 +298,10 @@ CREATE OR REPLACE FUNCTION bak_per(which_doe integer)
   returns numeric AS
           'SELECT sum(bakers_percent) OVER (PARTITION BY dough_id)
           FROM dough_info WHERE dough_id = which_doe;'
- LANGUAGE SQL;
+ LANGUAGE SQL
+IMMUTABLE
+  RETURNS NULL ON NULL INPUT;
+
 
 CREATE OR REPLACE FUNCTION formula(my_dough_id integer)
        RETURNS TABLE (dough character varying, "%" numeric, ingredient character varying,
@@ -389,7 +405,7 @@ VALUES (3, 'o', 'b'),
        (4, 'o', 'n')
 ;
 
-INSERT INTO emp_id_numbs (party_id, party_type, ein)
+INSERT INTO ein_numbs (party_id, party_type, ein)
 VALUES (3, 'o', '01-23456789'),
        (4, 'o', '11-11111111')
 ;
@@ -405,8 +421,8 @@ VALUES (1, 'm', '555-1212'),
        (6, 'f', '608-000-0000')
 ;
 
-            --dough_shape_weights
-INSERT INTO dough_shape_weights (dough_id, shape_id, dough_shape_grams)
+            --dough_shapes
+INSERT INTO dough_shapes (dough_id, shape_id, ds_grams)
      VALUES (4, 1, 1600),
             (3, 2, 1280),
             (5, 4, 105),
