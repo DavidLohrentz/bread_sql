@@ -5,7 +5,7 @@ SET timezone = 'US/Central';
 DROP VIEW IF EXISTS phone_book, staff_list,
      ingredient_list, people_list, shape_list,
      ein_list, todays_orders, dough_info,
-     todays_order_summary
+     todays_order_summary, standing_minus_holds
 ;
 
 DROP FUNCTION IF EXISTS get_batch_weight,
@@ -275,6 +275,20 @@ SELECT dough_id, dough_name, sum(amt * grams) AS total_grams
  GROUP BY dough_name, dough_id
  ORDER BY dough_id;
 
+CREATE OR REPLACE VIEW standing_minus_holds AS
+SELECT so.day_of_week as dow_id, dw.dow_names AS dow, 
+       d.dough_name, s.shape_name, ROUND(amt::numeric * 
+       (1-(h.decrease_percent::numeric/100)),0) AS st_orders_less_holds 
+FROM standing_orders AS so                                       
+JOIN doughs AS d on so.dough_id = d.dough_id
+LEFT JOIN holds as h ON so.dough_id = h.dough_id AND so.shape_id = h.shape_id
+JOIN shapes AS s on so.shape_id = s.shape_id
+JOIN days_of_week as dw on so.day_of_week = dw.dow_id
+WHERE so.day_of_week = h.day_of_week
+AND h.decrease_percent < 100
+AND now()::date >= h.start_date - d.lead_time_days
+AND now()::date < h.resume_date - d.lead_time_days;
+
 
 CREATE OR REPLACE FUNCTION
 get_batch_weight(which_dough INTEGER)
@@ -440,12 +454,12 @@ INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent,
             (4, 6, 80, 20, 0, 18),
             (4, 8, 1.9, 0, 0, 0),
             (1, 2, 40, 0, 0, 20),
-            (1, 4, 30, 33, 0, 0),
-            (1, 7, 30, 33, 0, 20),
-            (1, 6, 70, 20, 0, 18),
-            (1, 8, 2.2, 0, 0, 0),
-            (1, 11, 30, 0, 0, 0),
-            (1, 12, 30, 0, 0, 0),
+            (1, 4, 30, 36, 0, 0),
+            (1, 7, 30, 36, 0, 20),
+            (1, 6, 70, 22, 0, 18),
+            (1, 8, 2.0, 0, 0, 0),
+            (1, 11, 25, 0, 0, 0),
+            (1, 12, 25, 0, 0, 0),
             (5, 1, 50, 0, 0, 0),
             (5, 4, 50, 5.4, 0, 0),
             (5, 6, 64, 2.4, 0, 0),
@@ -507,7 +521,7 @@ INSERT INTO standing_orders (day_of_week, customer_id, customer_type, dough_id,
             shape_id, amt, order_created_at)
        VALUES 
             --kamut
-            (1, 1, 'i', 4, 1, 1, (SELECT now())),
+            (1, 1, 'i', 4, 1, 2, (SELECT now())),
             (2, 1, 'i', 4, 1, 1, (SELECT now())),
             (3, 1, 'i', 4, 1, 1, (SELECT now())),
             (4, 1, 'i', 4, 1, 1, (SELECT now())),
@@ -518,7 +532,7 @@ INSERT INTO standing_orders (day_of_week, customer_id, customer_type, dough_id,
 
 INSERT INTO holds (day_of_week, customer_id, dough_id, shape_id, start_date, resume_date, decrease_percent)
        VALUES
-            (1, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+            (1, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50),
             (2, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
             (3, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
             (4, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
