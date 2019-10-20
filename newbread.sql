@@ -276,8 +276,8 @@ SELECT dough_id, dough_name, sum(amt * grams) AS total_grams
  ORDER BY dough_id;
 
 CREATE OR REPLACE VIEW standing_minus_holds AS
-SELECT so.day_of_week as dow_id, dw.dow_names AS dow, 
-       d.dough_name, s.shape_name, ROUND(amt::numeric * 
+SELECT so.day_of_week as dow_id, dw.dow_names AS dow, d.dough_id, 
+       d.dough_name, s.shape_id, s.shape_name, ROUND(amt::numeric * 
        (1-(h.decrease_percent::numeric/100)),0) AS st_orders_less_holds 
 FROM standing_orders AS so                                       
 JOIN doughs AS d on so.dough_id = d.dough_id
@@ -287,7 +287,8 @@ JOIN days_of_week as dw on so.day_of_week = dw.dow_id
 WHERE so.day_of_week = h.day_of_week
 AND h.decrease_percent < 100
 AND now()::date >= h.start_date - d.lead_time_days
-AND now()::date < h.resume_date - d.lead_time_days;
+AND now()::date < h.resume_date - d.lead_time_days
+AND (SELECT date_part('dow', CURRENT_DATE)) + d.lead_time_days = so.day_of_week;
 
 
 CREATE OR REPLACE FUNCTION
@@ -522,21 +523,21 @@ INSERT INTO standing_orders (day_of_week, customer_id, customer_type, dough_id,
        VALUES 
             --kamut
             (1, 1, 'i', 4, 1, 2, (SELECT now())),
-            (2, 1, 'i', 4, 1, 1, (SELECT now())),
+            (2, 1, 'i', 4, 1, 2, (SELECT now())),
             (3, 1, 'i', 4, 1, 1, (SELECT now())),
             (4, 1, 'i', 4, 1, 1, (SELECT now())),
             (5, 1, 'i', 4, 1, 1, (SELECT now())),
             (6, 1, 'i', 4, 1, 1, (SELECT now())),
-            (7, 1, 'i', 4, 1, 1, (SELECT now()))
+            (7, 1, 'i', 4, 1, 2, (SELECT now()))
 ;
 
 INSERT INTO holds (day_of_week, customer_id, dough_id, shape_id, start_date, resume_date, decrease_percent)
        VALUES
             (1, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50),
-            (2, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+            (2, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50),
             (3, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
             (4, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
             (5, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
             (6, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
-            (7, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100)
+            (7, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50)
 ;
