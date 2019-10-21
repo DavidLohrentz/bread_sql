@@ -276,14 +276,19 @@ SELECT dough_id, dough_name, sum(amt * grams) AS total_grams
  ORDER BY dough_id;
 
 CREATE OR REPLACE VIEW standing_minus_holds AS
-SELECT so.day_of_week as dow_id, dw.dow_names AS dow, d.dough_id, 
-       d.dough_name, s.shape_id, s.shape_name, ROUND(amt::numeric * 
-       (1-(h.decrease_percent::numeric/100)),0) AS st_orders_less_holds 
+SELECT d.dough_id, p.party_name AS customer, now()::date + d.lead_time_days AS delivery_date,  
+       d.lead_time_days AS lead_time, ROUND(amt::numeric * 
+       (1-(h.decrease_percent::numeric/100)),0) AS amt,  
+       d.dough_name, s.shape_name, ds.ds_grams AS grams
 FROM standing_orders AS so                                       
 JOIN doughs AS d on so.dough_id = d.dough_id
 LEFT JOIN holds as h ON so.dough_id = h.dough_id AND so.shape_id = h.shape_id
 JOIN shapes AS s on so.shape_id = s.shape_id
 JOIN days_of_week as dw on so.day_of_week = dw.dow_id
+JOIN parties AS p on so.customer_id = p.party_id 
+     AND so.customer_type = p.party_type
+JOIN dough_shapes as ds on so.dough_id = ds.dough_id
+     AND s.shape_id = ds.shape_id
 WHERE so.day_of_week = h.day_of_week
 AND h.decrease_percent < 100
 AND now()::date >= h.start_date - d.lead_time_days
@@ -293,10 +298,13 @@ AND (SELECT date_part('dow', CURRENT_DATE)) + d.lead_time_days = so.day_of_week;
 
 CREATE OR REPLACE FUNCTION
 get_batch_weight(which_dough INTEGER)
-RETURNS BIGINT AS
-'SELECT sum(amt * grams)
+RETURNS numeric AS
+'SELECT (SELECT COALESCE (sum(amt * grams), 0)
    FROM todays_orders
-  WHERE dough_id = which_dough
+  WHERE dough_id = which_dough) +
+  (SELECT COALESCE (sum(amt * grams), 0)
+     FROM standing_minus_holds
+   WHERE dough_id = which_dough)
 ;'
 LANGUAGE SQL
 IMMUTABLE
