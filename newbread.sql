@@ -9,7 +9,7 @@ DROP VIEW IF EXISTS phone_book, staff_list,
 ;
 
 DROP FUNCTION IF EXISTS get_batch_weight,
-     bak_per, formula, phone_search, get_dow,
+     bak_per, formula, phone_search, 
      percent_change
 ;
 
@@ -199,11 +199,11 @@ CREATE OR REPLACE VIEW phone_book AS
 WITH typology (party_id, phone_type_abbr, type) AS
      (SELECT party_id, phone_type,  
         CASE WHEN phone_type = 'w' THEN 'work'
-            WHEN phone_type = 'h' THEN 'home'
-            WHEN phone_type = 'f' THEN 'fax'
-            WHEN phone_type = 'b' THEN 'business'
-            WHEN phone_type = 'm' THEN 'mobile'
-            WHEN phone_type = 'e' THEN 'emergency'
+             WHEN phone_type = 'h' THEN 'home'
+             WHEN phone_type = 'f' THEN 'fax'
+             WHEN phone_type = 'b' THEN 'business'
+             WHEN phone_type = 'm' THEN 'mobile'
+             WHEN phone_type = 'e' THEN 'emergency'
         END
      FROM phones),
 
@@ -275,6 +275,7 @@ SELECT dough_id, dough_name, sum(amt * grams) AS total_grams
  GROUP BY dough_name, dough_id
  ORDER BY dough_id;
 
+--same format as todays_orders but data is standing orders minus holds
 CREATE OR REPLACE VIEW standing_minus_holds AS
 SELECT d.dough_id, p.party_name AS customer, now()::date + d.lead_time_days AS delivery_date,  
        d.lead_time_days AS lead_time, ROUND(amt::numeric * 
@@ -326,26 +327,27 @@ IMMUTABLE
   RETURNS NULL ON NULL INPUT;
 
 
+--usage: SELECT "%", ingredient, overall, sour, poolish, soaker, final FROM formula(1);
 CREATE OR REPLACE FUNCTION formula(my_dough_id integer)
        RETURNS TABLE (dough character varying, "%" numeric, ingredient character varying,
        overall numeric, sour numeric, poolish numeric, soaker numeric, final numeric) AS $$
        BEGIN
              RETURN QUERY
-                    SELECT d.dough_name, dil.bakers_percent, dil.ingredient,
-                    ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent /
+                    SELECT d.dough_name, din.bakers_percent, din.ingredient,
+                    ROUND(get_batch_weight(my_dough_id) * din.bakers_percent /
                           bak_per(my_dough_id), 0),
-                    ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent /
-                          bak_per(my_dough_id) * dil.percent_in_sour /100, 0),
-                    ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent /
-                          bak_per(my_dough_id) * dil.percent_in_poolish /100, 1),
-                    ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent /
-                          bak_per(my_dough_id) * dil.percent_in_soaker /100, 0),
-                    ROUND(get_batch_weight(my_dough_id) * dil.bakers_percent /
-                          bak_per(my_dough_id) * (1- (dil.percent_in_sour + 
-                          dil.percent_in_poolish + dil.percent_in_soaker)/100), 0)
-                    FROM dough_info AS dil
-                    JOIN doughs AS d on dil.dough_id = d.dough_id
-                    WHERE dil.dough_id = my_dough_id;
+                    ROUND(get_batch_weight(my_dough_id) * din.bakers_percent /
+                          bak_per(my_dough_id) * din.percent_in_sour /100, 0),
+                    ROUND(get_batch_weight(my_dough_id) * din.bakers_percent /
+                          bak_per(my_dough_id) * din.percent_in_poolish /100, 1),
+                    ROUND(get_batch_weight(my_dough_id) * din.bakers_percent /
+                          bak_per(my_dough_id) * din.percent_in_soaker /100, 0),
+                    ROUND(get_batch_weight(my_dough_id) * din.bakers_percent /
+                          bak_per(my_dough_id) * (1- (din.percent_in_sour + 
+                          din.percent_in_poolish + din.percent_in_soaker)/100), 0)
+                    FROM dough_info AS din
+                    JOIN doughs AS d on din.dough_id = d.dough_id
+                    WHERE din.dough_id = my_dough_id;
       END;
 $$ LANGUAGE plpgsql;
 
@@ -359,6 +361,8 @@ CREATE OR REPLACE FUNCTION phone_search(name_snippet VARCHAR)
                  WHERE pb.name ILIKE name_snippet;
        END;
 $$ LANGUAGE plpgsql;
+
+--Insert data to test code
 
 INSERT INTO zip_codes (zip, city, state)
 VALUES (53705, 'Madison', 'WI'),
