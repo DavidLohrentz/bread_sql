@@ -1,6 +1,8 @@
 import psycopg2
 import os
 
+which_dough = input("name of dough to add to doughs table: ")
+leader = int(input(f"how many days of lead time for {which_dough}? "))
 try:
     connection = psycopg2.connect(user= os.environ['PGUSER'],
                                   password = os.environ['PGPASSWD'],
@@ -12,7 +14,7 @@ try:
 
     cursor.execute('''INSERT INTO doughs (dough_name, lead_time_days)
      VALUES (%s, %s);''',
-     ("foccacia", 1))
+     (which_dough, leader))
     connection.commit()
     print("Data inserted successfully into PostgreSQL")
 
