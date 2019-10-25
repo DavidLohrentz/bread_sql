@@ -1,15 +1,15 @@
 import psycopg2
 import os
 
-connection = psycopg2.connect(user= os.environ['PGUSER'],
+def insert_data(SQL, data):
+    connection = psycopg2.connect(user= os.environ['PGUSER'],
                                   password = os.environ['PGPASSWD'],
                                   host= os.environ['PGHOST'],
                                   port="5432",
                                   database= os.environ['PGDATABASE'])
 
-cursor = connection.cursor()
+    cursor = connection.cursor()
 
-def insert_data(SQL, data):
     try:
         cursor.execute(SQL, data)
         connection.commit()
@@ -22,6 +22,13 @@ def insert_data(SQL, data):
                 cursor.close()
                 connection.close()
                 print("PostgreSQL connection is closed")
+
+def another_one():
+    another = input("would you like to enter more data? y = yes, n = no\n")
+    if another == "y":
+        pick_it()
+    else:
+        exit(0)
 
 def dough():
     which_dough = input("name of dough to add to doughs table: ")
@@ -46,20 +53,41 @@ def shape():
     SQL = "INSERT INTO shapes (shape_name) VALUES (%s);"
     insert_data(SQL, data)
 
+def spec_ord():
+    delivery = input("What is the delivery date?\n")
+    cid = input("What is the party_id of the customer?\n")
+    cust_type = input("Is the customer an individual 'i' or organization 'o'?\n")
+    doe = input("What is the dough_id?\n")
+    sh = input("What is the shape_id?\n")
+    amt = input("What is the amount?\n")
+    SQL = """INSERT INTO special_orders (delivery_date, customer_id, customer_type,
+             dough_id, shape_id, amt) VALUES (%s, %s, %s, %s, %s, %s)"""
+    data = (delivery, cid, cust_type, doe, sh, amt)
+    insert_data(SQL, data)
+
 def pick_it():
     pick_table = input("""Insert data in which table?\n
         d) doughs
         i) ingredients
-        s) shapes \n\n""")
+        s) shapes
+        so) special orders
+        \n\n""")
 
     if pick_table == "d":
         dough()
+        another_one()
 
     elif pick_table == "i":
         ingredient()
+        another_one()
 
     elif pick_table == "s":
         shape()
+        another_one()
+
+    elif pick_table == "so":
+        spec_ord()
+        another_one()
 
     else:
        pick_it()
