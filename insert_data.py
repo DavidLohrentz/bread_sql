@@ -24,15 +24,18 @@ def insert_data(SQL, data):
                 print("PostgreSQL connection is closed")
 
 def another_one():
-    another = input("Would you like to enter more data? y = yes, n = no\n")
+    another = input("""Would you like to enter more data?
+    y) yes
+    n) no\n""")
+
     if another.upper() == "Y":
         pick_it()
     else:
         exit(0)
 
 def dough():
-    which_dough = input("name of dough to add to doughs table: ")
-    leader = int(input(f"how many days of lead time for {which_dough}? "))
+    which_dough = input("name of dough: \n")
+    leader = int(input(f"Days of lead time for {which_dough}? \n"))
     SQL = "INSERT INTO doughs (dough_name, lead_time_days) VALUES (%s, %s)"
     data = (which_dough, leader)
     insert_data(SQL, data)
