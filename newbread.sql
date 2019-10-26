@@ -211,6 +211,30 @@ SELECT ph.party_id, nm.new_name AS name, p.party_type, t.type, ph.phone_no
   LEFT JOIN people_st AS pe ON ph.party_id = pe.party_id
  ORDER BY ph.party_id, t.type;
 
+CREATE OR REPLACE VIEW email_list AS
+  WITH et (party_id, type_code, type) AS
+     (SELECT party_id, email_type,  
+        CASE WHEN email_type = 'w' THEN 'work'
+             WHEN email_type = 'b' THEN 'business'
+             WHEN email_type = 'p' THEN 'personal'
+        END
+     FROM emails),
+
+name_join (party_id, new_name) AS
+     (SELECT p.party_id, 
+       CASE WHEN pe.party_type = 'i' THEN pe.first_name || ' ' || p.party_name
+       ELSE p.party_name
+       END 
+     FROM parties AS p
+     FULL JOIN people_st as pe on p.party_id = pe.party_id)
+
+SELECT e.party_id, nm.new_name AS name, et.type, e.email 
+  FROM emails AS e
+  JOIN name_join as nm on e.party_id = nm.party_id
+  JOIN et ON e.party_id = et.party_id AND e.email_type = et.type_code
+  JOIN parties AS p on e.party_id = p.party_id
+  LEFT JOIN people_st as pe ON e.party_id = pe.party_id;
+
 
 CREATE OR REPLACE VIEW staff_list AS 
 SELECT s.party_id, pe.first_name, p.party_name AS last_name, 
@@ -434,6 +458,12 @@ VALUES (1, 'm', '555-1212'),
        (2, 'e', '608-555-1234'),
        (6, 'f', '608-000-0000')
 ;
+
+INSERT INTO emails (party_id, email_type, email)
+VALUES (1, 'p', 'bubba@gmail.com'),
+       (1, 'w', 'punkinhead_sucks@traitors.com')
+;
+
 
             --dough_shapes
 INSERT INTO dough_shapes (dough_id, shape_id, ds_grams)
