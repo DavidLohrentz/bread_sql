@@ -24,8 +24,8 @@ def insert_data(SQL, data):
                 print("PostgreSQL connection is closed")
 
 def another_one():
-    another = input("\nwould you like to enter more data? y = yes, n = no\n")
-    if another == "y":
+    another = input("Would you like to enter more data? y = yes, n = no\n")
+    if another.upper() == "Y":
         pick_it()
     else:
         exit(0)
@@ -81,23 +81,23 @@ def pick_it():
         so) special orders
         \n\n""")
 
-    if pick_table == "d":
+    if pick_table.upper() == "D":
         dough()
         another_one()
 
-    elif pick_table == "i":
+    elif pick_table.upper() == "I":
         ingredient()
         another_one()
 
-    elif pick_table == "p":
+    elif pick_table.upper() == "P":
         party()
         another_one()
 
-    elif pick_table == "s":
+    elif pick_table.upper() == "S":
         shape()
         another_one()
 
-    elif pick_table == "so":
+    elif pick_table.upper() == "SO":
         spec_ord()
         another_one()
 
