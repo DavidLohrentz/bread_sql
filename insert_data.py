@@ -40,6 +40,17 @@ def dough():
     data = (which_dough, leader)
     insert_data(SQL, data)
 
+def email():
+    party_name = input("what is the party_id: ")
+    email_type = input("""What is the email type:
+        b) business
+        w) work
+        p) personal\n""")
+    email = input("what is the email address: ")
+    SQL = "INSERT INTO emails (party_id, email_type, email) VALUES (%s, %s, %s)"
+    data = (party_name, email_type, email)
+    insert_data(SQL, data)
+
 def party():
     party_name = input("what is the name of the party: ")
     party_type = input(f"Is {party_name} an individual (i) or and organization (o)? ")
@@ -78,6 +89,7 @@ def spec_ord():
 def pick_it():
     pick_table = input("""Insert data in which table?\n
         d) doughs
+        e) emails
         i) ingredients
         p) parties
         s) shapes
@@ -86,6 +98,10 @@ def pick_it():
 
     if pick_table.upper() == "D":
         dough()
+        another_one()
+
+    if pick_table.upper() == "E":
+        email()
         another_one()
 
     elif pick_table.upper() == "I":
