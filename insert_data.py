@@ -24,7 +24,7 @@ def insert_data(SQL, data):
                 print("PostgreSQL connection is closed")
 
 def another_one():
-    another = input("would you like to enter more data? y = yes, n = no\n")
+    another = input("\nwould you like to enter more data? y = yes, n = no\n")
     if another == "y":
         pick_it()
     else:
@@ -35,6 +35,13 @@ def dough():
     leader = int(input(f"how many days of lead time for {which_dough}? "))
     SQL = "INSERT INTO doughs (dough_name, lead_time_days) VALUES (%s, %s)"
     data = (which_dough, leader)
+    insert_data(SQL, data)
+
+def party():
+    party_name = input("what is the name of the party: ")
+    party_type = input(f"Is {party_name} an individual (i) or and organization (o)? ")
+    SQL = "INSERT INTO parties (party_name, party_type) VALUES (%s, %s)"
+    data = (party_name, party_type)
     insert_data(SQL, data)
 
 def ingredient():
@@ -69,6 +76,7 @@ def pick_it():
     pick_table = input("""Insert data in which table?\n
         d) doughs
         i) ingredients
+        p) parties
         s) shapes
         so) special orders
         \n\n""")
@@ -79,6 +87,10 @@ def pick_it():
 
     elif pick_table == "i":
         ingredient()
+        another_one()
+
+    elif pick_table == "p":
+        party()
         another_one()
 
     elif pick_table == "s":
