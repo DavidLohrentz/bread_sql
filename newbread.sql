@@ -2,35 +2,13 @@ SET timezone = 'US/Central';
 
 -- CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-DROP VIEW IF EXISTS phone_book, staff_list,
-     ingredient_list, people_list, shape_list,
-     ein_list, todays_orders, dough_info,
-     todays_order_summary, standing_minus_holds
-;
+\c postgres
 
-DROP FUNCTION IF EXISTS get_batch_weight,
-     bak_per, formula, phone_search, 
-     percent_change
-;
+DROP DATABASE IF EXISTS bread;
 
-DROP TABLE IF EXISTS parties, people_st, staff_st, 
-     organization_st, phones, zip_codes, doughs,
-     shapes, ingredients, dough_shapes,
-     dough_ingredients, special_orders, ein_numbs,
-     standing_orders, holds, days_of_week
-;
+CREATE DATABASE bread;
 
-CREATE OR REPLACE FUNCTION 
-       percent_change(second_value numeric,
-                      first_value numeric,
-                      dec_places INT DEFAULT 1)
-       RETURNS numeric AS
-               'SELECT ROUND(
-               ((second_value - first_value) / first_value
-               ) * 100, dec_places);'
-LANGUAGE SQL
-IMMUTABLE
-RETURNS NULL ON NULL INPUT;
+\c bread
 
 CREATE TABLE parties (
        party_id INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -92,6 +70,15 @@ CREATE TABLE phones (
             -- work, home, fax, business, mobile, emergency
        phone_no VARCHAR(25) UNIQUE NOT NULL,
        primary key (party_id, phone_type)
+);
+
+CREATE TABLE emails (
+       email_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+       party_id INTEGER NOT NULL,
+       email_type char(1) not null default 'p' check 
+            (email_type in ('w', 'b', 'p')),
+            -- work, business, personal
+       email VARCHAR(60) UNIQUE NOT NULL
 );
 
 CREATE TABLE ingredients (
@@ -371,7 +358,7 @@ VALUES (53705, 'Madison', 'WI'),
 ;
 
 INSERT INTO parties (party_type, party_name)
-VALUES ('i', 'mylast'),
+VALUES ('i', 'Blow'),
        ('i', 'Bar'),
        ('o', 'Madison Sourdough'),
        ('o', 'Meadlowlark Organics'),
@@ -382,9 +369,9 @@ VALUES ('i', 'mylast'),
        ('o', 'LeSaffre')
 ;
 
-INSERT INTO people_st (party_id, party_type, first_name)
-VALUES (1, 'i', 'myfirst'),
-       (2, 'i', 'Foo')
+INSERT INTO people_st (party_id, first_name)
+VALUES (1, 'Joe'),
+       (2, 'Foo')
 ;
 
             --shapes
