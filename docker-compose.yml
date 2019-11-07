@@ -1,0 +1,23 @@
+version: '3.7'
+
+services:
+  db:
+    image: postgres:12.0-alpine
+    restart: always
+    build:
+      context: .
+      args:
+        - my_pass
+        - my_user
+    environment:
+      - POSTGRES_PASSWORD=${my-pass}
+      - POSTGRES_USER=${my-user}
+    container_name: postgres12
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - 5432:5432
+ 
+volumes:
+  db-data:
+    driver: local
