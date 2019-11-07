@@ -112,13 +112,24 @@ CREATE TABLE dough_shapes (
 );
 
 CREATE TABLE dough_ingredients (
-    dough_id INTEGER NOT NULL REFERENCES doughs(dough_id),
-    ingredient_id INTEGER NOT NULL REFERENCES ingredients(ingredient_id),
-    bakers_percent NUMERIC (5, 2) NOT NULL,
-    percent_in_sour NUMERIC NOT NULL,
-    percent_in_poolish NUMERIC (5, 2)NOT NULL,
-    percent_in_soaker NUMERIC NOT NULL,
-    PRIMARY KEY (dough_id, ingredient_id)
+       dough_ingr_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+       dough_id INTEGER NOT NULL REFERENCES doughs(dough_id),
+       ingredient_id INTEGER NOT NULL REFERENCES ingredients(ingredient_id),
+       bakers_percent NUMERIC (5, 2) NOT NULL,
+       percent_in_sour NUMERIC NOT NULL,
+       percent_in_poolish NUMERIC (5, 2)NOT NULL,
+       percent_in_soaker NUMERIC NOT NULL
+);
+
+CREATE TABLE dough_mod (                                                 
+       dough_mod_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+       mod_name VARCHAR(40) NOT NULL, 
+       dough_id INTEGER NOT NULL REFERENCES doughs(dough_id),
+       ingredient_id INTEGER NOT NULL REFERENCES ingredients(ingredient_id),
+       bakers_percent NUMERIC (5, 2) NOT NULL,
+       percent_in_sour NUMERIC NOT NULL,
+       percent_in_poolish NUMERIC (5, 2)NOT NULL,
+       percent_in_soaker NUMERIC NOT NULL
 );
 
 CREATE TABLE special_orders (
@@ -362,6 +373,44 @@ CREATE OR REPLACE FUNCTION formula(my_dough_id integer)
       END;
 $$ LANGUAGE plpgsql;
 
+
+CREATE OR REPLACE FUNCTION modded_formula(get_dough_id integer, get_mod VARCHAR)
+       RETURNS TABLE (dough character varying, "%" numeric, ingredient character varying,
+       overall numeric, sour numeric, poolish numeric, soaker numeric, final numeric) AS $$
+       BEGIN
+             RETURN QUERY
+WITH dmu AS (SELECT di.dough_id, di.ingredient_id, i.ingredient_name, i.is_flour, di.bakers_percent, 
+             di.percent_in_sour, di.percent_in_poolish, di.percent_in_soaker
+FROM dough_ingredients as di 
+JOIN ingredients as i on di.ingredient_id = i.ingredient_id
+WHERE di.dough_id = get_dough_id
+     UNION
+     SELECT dm.dough_id, dm.ingredient_id, i.ingredient_name, i.is_flour, dm.bakers_percent, 
+            dm.percent_in_sour, dm.percent_in_poolish, dm.percent_in_soaker
+FROM dough_mod as dm 
+JOIN ingredients as i on dm.ingredient_id = i.ingredient_id
+     WHERE dm.mod_name LIKE get_mod AND dm.dough_id = get_dough_id)
+
+                    SELECT d.dough_name, dmu.bakers_percent, dmu.ingredient_name,
+                    ROUND(get_batch_weight(get_dough_id) * dmu.bakers_percent /
+                          bak_per(get_dough_id), 0),
+                    ROUND(get_batch_weight(get_dough_id) * dmu.bakers_percent /
+                          bak_per(get_dough_id) * dmu.percent_in_sour /100, 0),
+                    ROUND(get_batch_weight(get_dough_id) * dmu.bakers_percent /
+                          bak_per(get_dough_id) * dmu.percent_in_poolish /100, 1),
+                    ROUND(get_batch_weight(get_dough_id) * dmu.bakers_percent /
+                          bak_per(get_dough_id) * dmu.percent_in_soaker /100, 0),
+                    ROUND(get_batch_weight(get_dough_id) * dmu.bakers_percent /
+                          bak_per(get_dough_id) * (1- (dmu.percent_in_sour + 
+                          dmu.percent_in_poolish + dmu.percent_in_soaker)/100), 0)
+                    FROM dmu 
+                    JOIN doughs AS d on dmu.dough_id = d.dough_id
+                    WHERE dmu.dough_id = get_dough_id;
+
+      END;
+$$ LANGUAGE plpgsql;
+
+
        --Useage: SELECT * FROM phone_search('mad%');
 CREATE OR REPLACE FUNCTION phone_search(name_snippet VARCHAR)
        RETURNS TABLE (name VARCHAR, phone_type text, phone_no VARCHAR) AS $$
@@ -501,7 +550,12 @@ INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent,
             (2, 8, 1.9, 0, 0, 0),
             (2, 10, .05, 0, 100, 0)
 ;
-            
+
+INSERT INTO dough_mod (mod_name, dough_id, ingredient_id, bakers_percent,
+       percent_in_sour, percent_in_poolish, percent_in_soaker)
+       VALUES ('cranberry', 4, 11, 20, 0, 0, 0)
+;
+
             --special_orders
 INSERT INTO special_orders (delivery_date, customer_id, customer_type, dough_id,
             shape_id, amt, order_created_at)
