@@ -348,7 +348,6 @@ CREATE OR REPLACE FUNCTION bak_per(which_doe integer)
 IMMUTABLE
   RETURNS NULL ON NULL INPUT;
 
-
 --usage: SELECT "%", ingredient, overall, sour, poolish, soaker, final FROM formula(1);
 CREATE OR REPLACE FUNCTION formula(my_dough_id integer)
        RETURNS TABLE (dough character varying, "%" numeric, ingredient character varying,
@@ -374,6 +373,7 @@ CREATE OR REPLACE FUNCTION formula(my_dough_id integer)
 $$ LANGUAGE plpgsql;
 
 
+--useage: SELECT * FROM modded_formula(4, 'cran%');
 CREATE OR REPLACE FUNCTION modded_formula(get_dough_id integer, get_mod VARCHAR)
        RETURNS TABLE (dough character varying, "%" numeric, ingredient character varying,
        overall numeric, sour numeric, poolish numeric, soaker numeric, final numeric) AS $$
@@ -384,7 +384,7 @@ WITH dmu AS (SELECT di.dough_id, di.ingredient_id, i.ingredient_name, i.is_flour
 FROM dough_ingredients as di 
 JOIN ingredients as i on di.ingredient_id = i.ingredient_id
 WHERE di.dough_id = get_dough_id
-     UNION
+     UNION ALL
      SELECT dm.dough_id, dm.ingredient_id, i.ingredient_name, i.is_flour, dm.bakers_percent, 
             dm.percent_in_sour, dm.percent_in_poolish, dm.percent_in_soaker
 FROM dough_mod as dm 
@@ -553,7 +553,8 @@ INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent,
 
 INSERT INTO dough_mod (mod_name, dough_id, ingredient_id, bakers_percent,
        percent_in_sour, percent_in_poolish, percent_in_soaker)
-       VALUES ('cranberry', 4, 11, 20, 0, 0, 0)
+       VALUES ('cranberry', 4, 11, 20, 0, 0, 0),
+              ('cranberry', 4, 8, 0.1, 0, 0, 0)
 ;
 
             --special_orders
