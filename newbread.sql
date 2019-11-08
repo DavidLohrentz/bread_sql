@@ -36,14 +36,16 @@ CREATE TABLE staff_st (
        party_id INTEGER PRIMARY KEY,
        party_type CHAR(1) default 'i' check (party_type = 'i') NOT NULL,
        ssn CHAR(11) NOT NULL,
-       hire_date DATE NOT NULL CHECK (hire_date > '2000-01-01'),
+       hire_date DATE NOT NULL,
        is_active BOOLEAN NOT NULL,
        street_no VARCHAR(12) NOT NULL,
        street VARCHAR(30) NOT NULL,
        zip CHAR(5) NOT NULL REFERENCES zip_codes(zip),
        FOREIGN KEY (party_id, party_type) references parties (party_id, party_type),
-       FOREIGN KEY (party_id) references people_st (party_id))
-;
+       FOREIGN KEY (party_id) references people_st (party_id),
+       CONSTRAINT hire_date_after_1970 CHECK (hire_date > '1970-01-01'),
+       CONSTRAINT hire_date_within_next_mon CHECK (hire_date < now()::date + interval '1 month')
+);
 
 -- For "organizations", a subtype of parties
 CREATE TABLE organization_st (
@@ -234,6 +236,21 @@ SELECT ph.party_id, nm.new_name AS name, p.party_type, t.type, ph.phone_no
   LEFT JOIN people_st AS pe ON ph.party_id = pe.party_id
  ORDER BY ph.party_id, t.type;
 
+
+CREATE OR REPLACE VIEW staff_phones AS
+WITH mob_ph (
+    party_id, name, party_type, type, phone_no)
+AS (
+    SELECT * FROM phone_book
+    WHERE type = 'mobile'
+)
+SELECT COALESCE (ph.name, pe.first_name) AS name, 
+       s.hire_date, s.is_active, COALESCE (ph.phone_no, 'none') AS mobile
+FROM staff_st as s
+LEFT JOIN mob_ph as ph on s.party_id = ph.party_id
+JOIN people_st AS pe on s.party_id = pe.party_id;
+
+
 CREATE OR REPLACE VIEW email_list AS
   WITH et (party_id, type_code, type) AS
      (SELECT party_id, email_type,  
@@ -260,15 +277,14 @@ SELECT e.party_id, nm.new_name AS name, et.type, e.email
 
 
 CREATE OR REPLACE VIEW staff_list AS 
-SELECT s.party_id, pe.first_name, p.party_name AS last_name, 
+SELECT DISTINCT s.party_id, pe.first_name, p.party_name AS last_name, 
        s.ssn, s.is_active, s.hire_date, s.street_no, s.street, 
        z.city, z.state, s.zip, ph.phone_no AS mobile
 FROM staff_st AS s
 JOIN people_st AS pe on s.party_id = pe.party_id
 JOIN parties AS p on s.party_id = p.party_id AND s.party_type = p.party_type
-JOIN phone_book as ph ON s.party_id = ph.party_id
-JOIN zip_codes AS z on s.zip = z.zip
-WHERE ph.type = 'mobile';
+FULL JOIN phone_book as ph ON s.party_id = ph.party_id
+JOIN zip_codes AS z on s.zip = z.zip;
 
 CREATE OR REPLACE VIEW people_list AS
 SELECT pe.party_id, pe.first_name, p.party_name AS last_name
@@ -475,12 +491,14 @@ VALUES ('i', 'Blow'),
        ('o', 'LeSaffre'),
        ('o', 'Siggis'),
        ('o', 'New Glarus Brewery'),
-       ('o', 'Eden')
+       ('o', 'Eden'),
+       ('i', 'Latte')
 ;
 
 INSERT INTO people_st (party_id, first_name)
 VALUES (1, 'Joe'),
-       (2, 'Foo')
+       (2, 'Foo'),
+       (13, 'Moka-Choka')
 ;
 
             --shapes
@@ -528,7 +546,8 @@ INSERT INTO ingredients (ingredient_name, manufacturer_id, manufacturer_type, is
 INSERT INTO staff_st (party_id, party_type, ssn, is_active, hire_date,
        street_no, street, zip)
 VALUES (1, 'i', '123-45-6789', TRUE, '2019-10-01', '2906', 'Barlow St', 53705),
-       (2, 'i', '121-21-2121', FALSE, '2017-12-30', '924', 'Williamson St', 53703)
+       (2, 'i', '121-21-2121', FALSE, '2017-12-30', '924', 'Williamson St', 53703),
+       (13, 'i', '123-45-6666', TRUE, '2019-12-07', '2906', 'Barlow St', 53705)
 ;
 
 INSERT INTO organization_st (party_id, party_type, org_type)
