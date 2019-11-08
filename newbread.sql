@@ -348,6 +348,26 @@ CREATE OR REPLACE FUNCTION bak_per(which_doe integer)
 IMMUTABLE
   RETURNS NULL ON NULL INPUT;
 
+
+--usage: SELECT bak_per2(4, 'cran%');
+CREATE OR REPLACE FUNCTION bak_per2(which_doe integer, mod VARCHAR)
+  returns numeric AS
+
+          'SELECT (SELECT SUM(dm.bakers_percent) 
+           FROM dough_mod AS dm
+           WHERE dough_id = which_doe) +
+           (SELECT SUM(di.bakers_percent)
+           FROM dough_ingredients AS di
+           WHERE dough_id = which_doe
+           AND di.ingredient_id NOT IN (SELECT ingredient_id 
+           FROM dough_mod WHERE dough_id = which_doe 
+           AND mod_name LIKE mod));'
+
+LANGUAGE SQL
+IMMUTABLE
+  RETURNS NULL ON NULL INPUT;
+
+
 --usage: SELECT "%", ingredient, overall, sour, poolish, soaker, final FROM formula(1);
 CREATE OR REPLACE FUNCTION formula(my_dough_id integer)
        RETURNS TABLE (dough character varying, "%" numeric, ingredient character varying,
@@ -372,41 +392,42 @@ CREATE OR REPLACE FUNCTION formula(my_dough_id integer)
       END;
 $$ LANGUAGE plpgsql;
 
-
 --useage: SELECT * FROM modded_formula(4, 'cran%');
 CREATE OR REPLACE FUNCTION modded_formula(get_dough_id integer, get_mod VARCHAR)
        RETURNS TABLE (dough character varying, "%" numeric, ingredient character varying,
        overall numeric, sour numeric, poolish numeric, soaker numeric, final numeric) AS $$
        BEGIN
              RETURN QUERY
-WITH dmu AS (SELECT di.dough_id, di.ingredient_id, i.ingredient_name, i.is_flour, di.bakers_percent, 
+WITH dmu AS (SELECT dm.dough_id, dm.ingredient_id, i.ingredient_name, i.is_flour, dm.bakers_percent, 
+            dm.percent_in_sour, dm.percent_in_poolish, dm.percent_in_soaker
+FROM dough_mod as dm 
+JOIN ingredients as i on dm.ingredient_id = i.ingredient_id
+     WHERE dm.mod_name LIKE get_mod AND dm.dough_id = get_dough_id
+     UNION ALL
+SELECT di.dough_id, di.ingredient_id, i.ingredient_name, i.is_flour, di.bakers_percent, 
              di.percent_in_sour, di.percent_in_poolish, di.percent_in_soaker
 FROM dough_ingredients as di 
 JOIN ingredients as i on di.ingredient_id = i.ingredient_id
 WHERE di.dough_id = get_dough_id
-     UNION ALL
-     SELECT dm.dough_id, dm.ingredient_id, i.ingredient_name, i.is_flour, dm.bakers_percent, 
-            dm.percent_in_sour, dm.percent_in_poolish, dm.percent_in_soaker
-FROM dough_mod as dm 
-JOIN ingredients as i on dm.ingredient_id = i.ingredient_id
-     WHERE dm.mod_name LIKE get_mod AND dm.dough_id = get_dough_id)
+AND di.ingredient_id NOT IN (SELECT ingredient_id FROM dough_mod)
+ORDER BY is_flour DESC, bakers_percent DESC)
 
                     SELECT d.dough_name, dmu.bakers_percent, dmu.ingredient_name,
                     ROUND(get_batch_weight(get_dough_id) * dmu.bakers_percent /
-                          bak_per(get_dough_id), 0),
+                          bak_per2(get_dough_id, get_mod), 0),
                     ROUND(get_batch_weight(get_dough_id) * dmu.bakers_percent /
-                          bak_per(get_dough_id) * dmu.percent_in_sour /100, 0),
+                          bak_per2(get_dough_id, get_mod) * dmu.percent_in_sour /100, 0),
                     ROUND(get_batch_weight(get_dough_id) * dmu.bakers_percent /
-                          bak_per(get_dough_id) * dmu.percent_in_poolish /100, 1),
+                          bak_per2(get_dough_id, get_mod) * dmu.percent_in_poolish /100, 1),
                     ROUND(get_batch_weight(get_dough_id) * dmu.bakers_percent /
-                          bak_per(get_dough_id) * dmu.percent_in_soaker /100, 0),
+                          bak_per2(get_dough_id, get_mod) * dmu.percent_in_soaker /100, 0),
                     ROUND(get_batch_weight(get_dough_id) * dmu.bakers_percent /
-                          bak_per(get_dough_id) * (1- (dmu.percent_in_sour + 
+                          bak_per2(get_dough_id, get_mod) * (1- (dmu.percent_in_sour + 
                           dmu.percent_in_poolish + dmu.percent_in_soaker)/100), 0)
                     FROM dmu 
                     JOIN doughs AS d on dmu.dough_id = d.dough_id
-                    WHERE dmu.dough_id = get_dough_id;
-
+                    WHERE dmu.dough_id = get_dough_id
+                    ;
       END;
 $$ LANGUAGE plpgsql;
 
@@ -551,10 +572,12 @@ INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent,
             (2, 10, .05, 0, 100, 0)
 ;
 
+--any ingredient in this table will supercede dough_ingredient values
+--otherwise, all dough_ingredient values will be used
 INSERT INTO dough_mod (mod_name, dough_id, ingredient_id, bakers_percent,
        percent_in_sour, percent_in_poolish, percent_in_soaker)
        VALUES ('cranberry', 4, 11, 20, 0, 0, 0),
-              ('cranberry', 4, 8, 0.1, 0, 0, 0)
+              ('cranberry', 4, 8, 2.0, 0, 0, 0)
 ;
 
             --special_orders
