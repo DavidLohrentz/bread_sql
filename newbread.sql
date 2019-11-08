@@ -116,9 +116,12 @@ CREATE TABLE dough_ingredients (
        dough_id INTEGER NOT NULL REFERENCES doughs(dough_id),
        ingredient_id INTEGER NOT NULL REFERENCES ingredients(ingredient_id),
        bakers_percent NUMERIC (5, 2) NOT NULL,
-       percent_in_sour NUMERIC NOT NULL,
-       percent_in_poolish NUMERIC (5, 2)NOT NULL,
+       percent_in_sour NUMERIC NOT NULL
+               CHECK (percent_in_sour >= 0 AND percent_in_sour <= 100),
+       percent_in_poolish NUMERIC (5, 2)NOT NULL 
+               CHECK (percent_in_poolish >= 0 AND percent_in_poolish <= 100),
        percent_in_soaker NUMERIC NOT NULL
+               CHECK (percent_in_soaker >= 0 AND percent_in_soaker <= 100)
 );
 
 CREATE TABLE dough_mod (                                                 
@@ -127,9 +130,12 @@ CREATE TABLE dough_mod (
        dough_id INTEGER NOT NULL REFERENCES doughs(dough_id),
        ingredient_id INTEGER NOT NULL REFERENCES ingredients(ingredient_id),
        bakers_percent NUMERIC (5, 2) NOT NULL,
-       percent_in_sour NUMERIC NOT NULL,
-       percent_in_poolish NUMERIC (5, 2)NOT NULL,
+       percent_in_sour NUMERIC NOT NULL
+               CHECK (percent_in_sour >= 0 AND percent_in_sour <= 100),
+       percent_in_poolish NUMERIC (5, 2)NOT NULL
+               CHECK (percent_in_poolish >= 0 AND percent_in_poolish <= 100),
        percent_in_soaker NUMERIC NOT NULL
+               CHECK (percent_in_soaker >= 0 AND percent_in_soaker <= 100)
 );
 
 CREATE TABLE special_orders (
@@ -141,7 +147,7 @@ CREATE TABLE special_orders (
              REFERENCES doughs(dough_id),
        shape_id INTEGER NOT NULL
              REFERENCES shapes(shape_id),
-       amt INTEGER NOT NULL,
+       amt INTEGER NOT NULL CHECK (amt > 0),
        order_created_at TIMESTAMPTZ DEFAULT now(),
        FOREIGN KEY (customer_id, customer_type) 
                references parties (party_id, party_type)
@@ -162,7 +168,7 @@ CREATE TABLE standing_orders (
              REFERENCES doughs(dough_id),
        shape_id INTEGER NOT NULL
              REFERENCES shapes(shape_id),
-       amt INTEGER NOT NULL,
+       amt INTEGER NOT NULL CHECK (amt > 0),
        order_created_at TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (day_of_week, customer_id, dough_id, shape_id),
        FOREIGN KEY (customer_id, customer_type) 
@@ -460,7 +466,10 @@ VALUES ('i', 'Blow'),
        ('o', 'Willy St Coop'),
        ('o', 'King Arthur'),
        ('o', 'Redmond'),
-       ('o', 'LeSaffre')
+       ('o', 'LeSaffre'),
+       ('o', 'Siggis'),
+       ('o', 'New Glarus Brewery'),
+       ('o', 'Eden')
 ;
 
 INSERT INTO people_st (party_id, first_name)
@@ -499,7 +508,15 @@ INSERT INTO ingredients (ingredient_name, manufacturer_id, manufacturer_type, is
             ('leaven', 1, 'i', FALSE),
             ('saf-instant yeast', '9', 'o', FALSE),
             ('dried cranberries', 6, 'o', FALSE),
-            ('walnuts', 6, 'o', FALSE)
+            ('walnuts', 6, 'o', FALSE),
+            ('Turkey Red Flour', 4, 'o', TRUE),
+            ('Filmjolk', 10, 'o', FALSE),
+            ('Barley Malt Syrup', 11, 'o', FALSE),
+            ('Sprouted Rye Berries', 1, 'i', FALSE),
+            ('Whole Flax Seeds', 6, 'o', FALSE),
+            ('Ground Flax Seeds', 6, 'o', FALSE),
+            ('Sesame Seeds', 6, 'o', FALSE),
+            ('pumpkin Seeds', 6, 'o', FALSE)
 ;
 
 INSERT INTO staff_st (party_id, party_type, ssn, is_active, hire_date,
@@ -577,6 +594,7 @@ INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent,
 INSERT INTO dough_mod (mod_name, dough_id, ingredient_id, bakers_percent,
        percent_in_sour, percent_in_poolish, percent_in_soaker)
        VALUES ('cranberry', 4, 11, 20, 0, 0, 0),
+              ('cranberry', 4, 6, 75, 20, 0, 18),
               ('cranberry', 4, 8, 2.0, 0, 0, 0)
 ;
 
