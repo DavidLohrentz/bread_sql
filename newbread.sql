@@ -36,7 +36,7 @@ CREATE TABLE staff_st (
        party_id INTEGER PRIMARY KEY,
        party_type CHAR(1) default 'i' check (party_type = 'i') NOT NULL,
        ssn CHAR(11) NOT NULL,
-       hire_date DATE NOT NULL,
+       hire_date DATE NOT NULL CHECK (hire_date > '2000-01-01'),
        is_active BOOLEAN NOT NULL,
        street_no VARCHAR(12) NOT NULL,
        street VARCHAR(30) NOT NULL,
@@ -93,7 +93,7 @@ CREATE TABLE ingredients (
 CREATE TABLE doughs (
     dough_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     dough_name VARCHAR(70) UNIQUE NOT NULL,
-    lead_time_days INTEGER NOT NULL
+    lead_time_days INTEGER NOT NULL CHECK (lead_time_days >= 0 AND lead_time_days < 5)
 );
 
 CREATE TABLE shapes (
@@ -107,7 +107,7 @@ CREATE TABLE dough_shapes (
              REFERENCES doughs(dough_id),
     shape_id INTEGER NOT NULL
              REFERENCES shapes(shape_id),
-    ds_grams INTEGER NOT NULL,
+    ds_grams INTEGER NOT NULL CHECK (ds_grams < 2500 AND ds_grams > 0),
     PRIMARY KEY (dough_id, shape_id)
 );
 
@@ -115,7 +115,7 @@ CREATE TABLE dough_ingredients (
        dough_ingr_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
        dough_id INTEGER NOT NULL REFERENCES doughs(dough_id),
        ingredient_id INTEGER NOT NULL REFERENCES ingredients(ingredient_id),
-       bakers_percent NUMERIC (5, 2) NOT NULL,
+       bakers_percent NUMERIC (5, 2) NOT NULL CHECK (bakers_percent > 0),
        percent_in_sour NUMERIC NOT NULL
                CHECK (percent_in_sour >= 0 AND percent_in_sour <= 100),
        percent_in_poolish NUMERIC (5, 2)NOT NULL 
@@ -186,10 +186,16 @@ CREATE TABLE holds (
              REFERENCES shapes(shape_id),
        start_date DATE NOT NULL,
        resume_date DATE,
-       decrease_percent INTEGER NOT NULL check (decrease_percent <=100
-                        AND decrease_percent >=0),
+       decrease_percent INTEGER NOT NULL,
        FOREIGN KEY (day_of_week, customer_id, dough_id, shape_id)
-               REFERENCES standing_orders (day_of_week, customer_id, dough_id, shape_id)
+               REFERENCES standing_orders (day_of_week, customer_id, dough_id, shape_id),
+       CONSTRAINT start_in_present_or_future CHECK (start_date >= now()::date),
+       CONSTRAINT start_in_next_6_mons CHECK (start_date < now()::date + interval '6 months'),
+       CONSTRAINT resume_in_present_or_future CHECK (resume_date >= now()::date),
+       CONSTRAINT resume_in_next_6_mons CHECK (resume_date < now()::date + interval '6 months'),
+       CONSTRAINT resume_after_start CHECK (resume_date > start_date),
+       CONSTRAINT decrease_less_than_or_equal_100 CHECK (decrease_percent <=100),
+       CONSTRAINT decrease_more_than_0 CHECK (decrease_percent >0)
 );
 
 CREATE OR REPLACE VIEW ingredient_list AS 
