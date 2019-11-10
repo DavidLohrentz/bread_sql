@@ -246,6 +246,56 @@ CREATE TABLE standing_orders (
 );
 
 
+CREATE TABLE standing_changes (
+       day_of_week SMALLINT NOT NULL REFERENCES days_of_week(dow_id),
+       customer_id uuid NOT NULL,
+       io char(1),
+       dough_id uuid NOT NULL REFERENCES doughs(dough_id),
+       shape_id uuid NOT NULL REFERENCES shapes(shape_id),
+       old_amt INTEGER NOT NULL,
+       new_amt INTEGER NOT NULL,
+       change_time TIMESTAMPTZ DEFAULT now(),
+       PRIMARY KEY (day_of_week, customer_id, dough_id, shape_id, change_time),
+       FOREIGN KEY (customer_id, io) 
+                    references parties (party_id, party_type),
+       CONSTRAINT dow_in_1_thru_7 check (day_of_week IN (1, 2, 3, 4, 5, 6, 7)),
+       CONSTRAINT io_i_or_o CHECK (io in ('i', 'o'))
+);
+CREATE OR REPLACE FUNCTION record_if_amt_changed()
+       RETURNS trigger AS
+    $$
+    BEGIN
+          IF NEW.amt <> OLD.amt THEN
+            INSERT INTO standing_changes (
+            day_of_week,
+            customer_id,
+            io,
+            dough_id,
+            shape_id,
+            old_amt,
+            new_amt,
+            change_time)
+        VALUES (
+            OLD.day_of_week,
+            OLD.customer_id,
+            OLD.io,
+            OLD.dough_id,
+            OLD.shape_id,
+            OLD.amt,
+            NEW.amt,
+            now()
+        );
+        END IF;
+        RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER amt_update
+       AFTER UPDATE
+          on standing_orders
+       FOR EACH ROW
+       EXECUTE PROCEDURE record_if_amt_changed();
+
 CREATE TABLE holds (
        day_of_week SMALLINT NOT NULL,
        customer_id uuid NOT NULL,
@@ -438,6 +488,17 @@ SELECT di.dough_id, d.dough_name, di.bakers_percent, i.ingredient_name AS ingred
   JOIN ingredients AS i ON di.ingredient_id = i.ingredient_id
   JOIN doughs as d on di.dough_id = d.dough_id
  ORDER BY di.dough_id, i.is_flour DESC, di.bakers_percent DESC;
+
+
+CREATE OR REPLACE VIEW standing_change_history AS
+SELECT p.party_name, d.dough_name, s.shape_name, dw.dow_names,
+       sc.old_amt, sc.new_amt, sc.change_time
+  FROM standing_changes as sc
+  JOIN parties as p on sc.customer_id = p.party_id AND sc.io = p.party_type
+  JOIN doughs as d ON sc.dough_id = d.dough_id
+  JOIN shapes AS s on sc.shape_id = s.shape_id
+  JOIN days_of_week AS dw on sc.day_of_week = dw.dow_id;
+
 
 CREATE OR REPLACE FUNCTION bak_per(which_doe VARCHAR)
   returns numeric AS
@@ -831,7 +892,7 @@ INSERT INTO standing_orders (day_of_week, customer_id, io, dough_id,
             (4, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 1, (SELECT now())),
             (5, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 1, (SELECT now())),
             (6, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 1, (SELECT now())),
-            (7, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 2, (SELECT now()))
+            (7, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 4, (SELECT now()))
 ;
 
 INSERT INTO holds (day_of_week, customer_id, dough_id, shape_id, start_date, resume_date, decrease_percent)
@@ -858,9 +919,18 @@ INSERT INTO holds (day_of_week, customer_id, dough_id, shape_id, start_date, res
             (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50)
 ;
 
+UPDATE standing_orders 
+   SET amt = 2
+ WhERE day_of_week = 7 AND customer_id = pid('Blow')
+   AND dough_id = did('Kamut Sourdough');
+
+
 UPDATE parties
 SET party_name = 'Dept of Shenanigans'
 WHERE party_name Like 'Dept%';
+SELECT * 
+FROM standing_change_history;
+
 
 SELECT party_id, party_name, created, modified, modified - created AS time_diff
 FROM parties
