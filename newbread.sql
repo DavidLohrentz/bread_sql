@@ -140,6 +140,61 @@ CREATE TABLE ingredient_costs (
 );
 
 
+CREATE TABLE cost_changes (
+       ingredient_id uuid NOT NULL REFERENCES ingredients (ingredient_id),
+       maker_id uuid NOT NULL, 
+       mio CHAR(1) NOT NULL check (mio in ('i', 'o')),
+       seller_id uuid NOT NULL, 
+       sio CHAR(1) NOT NULL check (sio in ('i', 'o')),
+       old_cost money NOT NULL,
+       new_cost money NOT NULL,
+       grams numeric NOT NULL,
+       change_time TIMESTAMPTZ DEFAULT now(),
+       PRIMARY KEY (ingredient_id, maker_id, seller_id),
+       FOREIGN KEY (maker_id, mio) REFERENCES parties (party_id, party_type),
+       FOREIGN KEY (seller_id, sio) REFERENCES parties (party_id, party_type)
+);
+
+
+CREATE OR REPLACE FUNCTION record_if_cost_changed()
+       RETURNS trigger AS
+    $$
+    BEGIN
+          IF NEW.cost <> OLD.cost THEN
+            INSERT INTO cost_changes (
+            ingredient_id,
+            maker_id,
+            mio,
+            seller_id,
+            sio,
+            old_cost,
+            new_cost,
+            grams,
+            change_time)
+        VALUES (
+            OLD.ingredient_id,
+            OLD.maker_id,
+            OLD.mio,
+            OLD.seller_id,
+            OLD.sio,
+            OLD.cost,
+            NEW.cost,
+            OLD.grams,
+            now()
+        );
+        END IF;
+        RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+
+CREATE TRIGGER cost_update
+       AFTER UPDATE
+          on ingredient_costs
+       FOR EACH ROW
+       EXECUTE PROCEDURE record_if_cost_changed();
+
+
 CREATE TABLE doughs (
        dough_id uuid PRIMARY KEY default uuid_generate_v4(),
        dough_name VARCHAR(70) UNIQUE NOT NULL,
@@ -261,6 +316,7 @@ CREATE TABLE standing_changes (
        CONSTRAINT dow_in_1_thru_7 check (day_of_week IN (1, 2, 3, 4, 5, 6, 7)),
        CONSTRAINT io_i_or_o CHECK (io in ('i', 'o'))
 );
+
 CREATE OR REPLACE FUNCTION record_if_amt_changed()
        RETURNS trigger AS
     $$
@@ -928,6 +984,7 @@ UPDATE standing_orders
 UPDATE parties
 SET party_name = 'Dept of Shenanigans'
 WHERE party_name Like 'Dept%';
+
 SELECT * 
 FROM standing_change_history;
 
