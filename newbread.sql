@@ -1,7 +1,3 @@
-SET timezone = 'US/Central';
-
--- CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
 \c postgres
 
 DROP DATABASE IF EXISTS bread;
@@ -10,16 +6,21 @@ CREATE DATABASE bread;
 
 \c bread
 
+SET timezone = 'US/Central';
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 CREATE TABLE parties (
-       party_id INTEGER GENERATED ALWAYS AS IDENTITY,
+       party_id uuid default uuid_generate_v4(),
        party_type char(1) check (party_type in ('i', 'o')) NOT NULL,
        party_name VARCHAR(80) NOT NULL,
+       modified_at TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (party_id, party_type)
 );
 
 -- For "persons", a subtype of parties
 CREATE TABLE people_st (
-       party_id INTEGER PRIMARY KEY,
+       party_id uuid PRIMARY KEY,
        party_type CHAR(1) default 'i' check (party_type = 'i') NOT NULL,
        first_name VARCHAR(25) NOT NULL,
        FOREIGN KEY (party_id, party_type) references parties (party_id, party_type))
@@ -33,7 +34,7 @@ CREATE TABLE zip_codes (
 
 -- For "staff, a subtype of people
 CREATE TABLE staff_st (
-       party_id INTEGER PRIMARY KEY,
+       party_id uuid PRIMARY KEY,
        party_type CHAR(1) default 'i' check (party_type = 'i') NOT NULL,
        ssn CHAR(11) NOT NULL,
        hire_date DATE NOT NULL,
@@ -49,24 +50,24 @@ CREATE TABLE staff_st (
 
 -- For "organizations", a subtype of parties
 CREATE TABLE organization_st (
-       party_id INTEGER PRIMARY KEY,
+       party_id uuid PRIMARY KEY,
        party_type CHAR(1) default 'o' check (party_type = 'o') NOT NULL,
        org_type CHAR(1) NOT NULL,
        CONSTRAINT check_org_in_list CHECK 
-            (org_type IN('b', 'n', 'g')),
-            -- b = Business, n = Nonprofit, g = Gov't
+            (org_type in('b', 'c', 'n', 'g')),
+            -- b = Business, c = coop, n = Nonprofit, g = Gov't
        FOREIGN KEY (party_id, party_type) references parties (party_id, party_type))
 ;
 
 CREATE TABLE ein_numbs (
-       party_id INTEGER PRIMARY KEY,
+       party_id uuid PRIMARY KEY,
        party_type CHAR(1) default 'o' check (party_type = 'o') NOT NULL,
        ein CHAR(11) UNIQUE NOT NULL,
        FOREIGN KEY (party_id, party_type) references parties (party_id, party_type))
 ;
 
 CREATE TABLE phones (
-       party_id INTEGER NOT NULL,
+       party_id uuid,
        phone_type char(1) not null default 'm' check 
             (phone_type in ('w', 'h', 'f', 'b', 'm', 'e')),
             -- work, home, fax, business, mobile, emergency
@@ -75,8 +76,8 @@ CREATE TABLE phones (
 );
 
 CREATE TABLE emails (
-       email_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-       party_id INTEGER NOT NULL,
+       email_id uuid PRIMARY KEY default uuid_generate_v4(),
+       party_id uuid NOT NULL,
        email_type char(1) not null default 'p' check 
             (email_type in ('w', 'b', 'p')),
             -- work, business, personal
@@ -84,113 +85,127 @@ CREATE TABLE emails (
 );
 
 CREATE TABLE ingredients (
-       ingredient_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+       ingredient_id uuid PRIMARY KEY default uuid_generate_v4(),
        ingredient_name VARCHAR(80) NOT NULL,
-       manufacturer_id BIGINT NOT NULL,
+       manufacturer_id uuid NOT NULL,
        manufacturer_type char(1) check (manufacturer_type in ('i', 'o')) NOT NULL,
        is_flour BOOLEAN NOT NULL,
        FOREIGN KEY (manufacturer_id, manufacturer_type) references parties (party_id, party_type)
 );
 
 CREATE TABLE doughs (
-    dough_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    dough_name VARCHAR(70) UNIQUE NOT NULL,
-    lead_time_days INTEGER NOT NULL CHECK (lead_time_days >= 0 AND lead_time_days < 5)
+       dough_id uuid PRIMARY KEY default uuid_generate_v4(),
+       dough_name VARCHAR(70) UNIQUE NOT NULL,
+       lead_time_days INTEGER NOT NULL,
+       CONSTRAINT lead_time_greater_than_0 CHECK (lead_time_days >= 0),
+       CONSTRAINT lead_time_less_than_8 CHECK (lead_time_days < 8)
 );
 
 CREATE TABLE shapes (
-    shape_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    shape_name VARCHAR(70) UNIQUE NOT NULL
+       shape_id uuid PRIMARY KEY default uuid_generate_v4(),
+       shape_name VARCHAR(70) UNIQUE NOT NULL
 );
 
 -- Doughs may be divided into multiple shapes with different weights
 CREATE TABLE dough_shapes (
-    dough_id INTEGER NOT NULL
-             REFERENCES doughs(dough_id),
-    shape_id INTEGER NOT NULL
-             REFERENCES shapes(shape_id),
-    ds_grams INTEGER NOT NULL CHECK (ds_grams < 2500 AND ds_grams > 0),
-    PRIMARY KEY (dough_id, shape_id)
+       dough_id uuid NOT NULL REFERENCES doughs(dough_id),
+       shape_id uuid NOT NULL REFERENCES shapes(shape_id),
+       ds_grams INTEGER NOT NULL,
+       CONSTRAINT ds_grams_greater_than_0 CHECK (ds_grams > 0),
+       CONSTRAINT ds_grams_less_than_3000 CHECK (ds_grams < 3000),
+       PRIMARY KEY (dough_id, shape_id)
 );
 
 CREATE TABLE dough_ingredients (
-       dough_ingr_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-       dough_id INTEGER NOT NULL REFERENCES doughs(dough_id),
-       ingredient_id INTEGER NOT NULL REFERENCES ingredients(ingredient_id),
-       bakers_percent NUMERIC (5, 2) NOT NULL CHECK (bakers_percent > 0),
-       percent_in_sour NUMERIC NOT NULL
-               CHECK (percent_in_sour >= 0 AND percent_in_sour <= 100),
-       percent_in_poolish NUMERIC (5, 2)NOT NULL 
-               CHECK (percent_in_poolish >= 0 AND percent_in_poolish <= 100),
-       percent_in_soaker NUMERIC NOT NULL
-               CHECK (percent_in_soaker >= 0 AND percent_in_soaker <= 100)
+       dough_id uuid NOT NULL REFERENCES doughs(dough_id),
+       ingredient_id uuid NOT NULL REFERENCES ingredients(ingredient_id),
+       bakers_percent NUMERIC (5, 2) NOT NULL,
+       percent_in_sour NUMERIC NOT NULL,
+       percent_in_poolish NUMERIC (5, 2) NOT NULL,
+       percent_in_soaker NUMERIC NOT NULL,
+       PRIMARY KEY (dough_id, ingredient_id),
+       CONSTRAINT bp_positive CHECK (bakers_percent > 0),
+       CONSTRAINT percent_in_sour_positive CHECK (percent_in_sour >= 0),
+       CONSTRAINT percent_in_sour_max_100 CHECK (percent_in_sour <= 100),
+       CONSTRAINT percent_in_poolish_positive CHECK (percent_in_poolish >= 0),
+       CONSTRAINT percent_in_poolish_max_100 CHECK (percent_in_poolish <= 100),
+       CONSTRAINT percent_in_soaker_positive CHECK (percent_in_soaker >= 0),
+       CONSTRAINT percent_in_soaker_max_100 CHECK (percent_in_soaker <= 100)
 );
 
-CREATE TABLE dough_mod (                                                 
-       dough_mod_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+CREATE TABLE dough_mods (                                                 
        mod_name VARCHAR(40) NOT NULL, 
-       dough_id INTEGER NOT NULL REFERENCES doughs(dough_id),
-       ingredient_id INTEGER NOT NULL REFERENCES ingredients(ingredient_id),
+       dough_id uuid NOT NULL REFERENCES doughs(dough_id),
+       ingredient_id uuid NOT NULL REFERENCES ingredients(ingredient_id),
        bakers_percent NUMERIC (5, 2) NOT NULL,
-       percent_in_sour NUMERIC NOT NULL
-               CHECK (percent_in_sour >= 0 AND percent_in_sour <= 100),
-       percent_in_poolish NUMERIC (5, 2)NOT NULL
-               CHECK (percent_in_poolish >= 0 AND percent_in_poolish <= 100),
-       percent_in_soaker NUMERIC NOT NULL
-               CHECK (percent_in_soaker >= 0 AND percent_in_soaker <= 100)
+       percent_in_sour NUMERIC NOT NULL,
+       percent_in_poolish NUMERIC (5, 2)NOT NULL,
+       percent_in_soaker NUMERIC NOT NULL,
+       PRIMARY KEY (mod_name, dough_id, ingredient_id),
+       CONSTRAINT bp_positive CHECK (bakers_percent > 0),
+       CONSTRAINT percent_in_sour_positive CHECK (percent_in_sour >= 0),
+       CONSTRAINT percent_in_sour_max_100 CHECK (percent_in_sour <= 100),
+       CONSTRAINT percent_in_poolish_positive CHECK (percent_in_poolish >= 0),
+       CONSTRAINT percent_in_poolish_max_100 CHECK (percent_in_poolish <= 100),
+       CONSTRAINT percent_in_soaker_positive CHECK (percent_in_soaker >= 0),
+       CONSTRAINT percent_in_soaker_max_100 CHECK (percent_in_soaker <= 100)
 );
 
 CREATE TABLE special_orders (
-       special_order_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+       special_order_id uuid PRIMARY KEY default uuid_generate_v4(),
        delivery_date DATE NOT NULL,
-       customer_id INTEGER NOT NULL,
-       customer_type char(1) check (customer_type in ('i', 'o')) NOT NULL,
-       dough_id INTEGER NOT NULL
-             REFERENCES doughs(dough_id),
-       shape_id INTEGER NOT NULL
-             REFERENCES shapes(shape_id),
-       amt INTEGER NOT NULL CHECK (amt > 0),
-       order_created_at TIMESTAMPTZ DEFAULT now(),
-       FOREIGN KEY (customer_id, customer_type) 
-               references parties (party_id, party_type)
+       customer_id uuid NOT NULL,
+       customer_type char(1) NOT NULL,
+       dough_id uuid NOT NULL REFERENCES doughs(dough_id),
+       shape_id uuid NOT NULL REFERENCES shapes(shape_id),
+       amt INTEGER NOT NULL,
+       modified_at TIMESTAMPTZ DEFAULT now(),
+       FOREIGN KEY (customer_id, customer_type) references parties (party_id, party_type),
+       CONSTRAINT customer_type_i_or_o CHECK (customer_type in ('i', 'o')),
+       CONSTRAINT delivery_date_present_or_future CHECK (delivery_date >= now()::date),
+       CONSTRAINT delivery_date_in_next_6_mons CHECK (delivery_date < now()::date + interval '6 months'),
+       CONSTRAINT amt_greater_than_0 CHECK (amt > 0)
 );
 
 CREATE TABLE days_of_week (
-       dow_id SMALLINT PRIMARY KEY check (dow_id > 0 AND dow_id <= 7),
-       dow_names CHAR(3) NOT NULL check (dow_names in ('Mon', 'Tue',
+       dow_id SMALLINT PRIMARY KEY,
+       dow_names CHAR(3) NOT NULL,
+       CONSTRAINT dow_id_between_0_and_7 check (dow_id > 0 AND dow_id <= 7),
+       CONSTRAINT dow_names_3_letter_abr check (dow_names in ('Mon', 'Tue',
                  'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
 ));
 
 CREATE TABLE standing_orders (
-       day_of_week SMALLINT check (day_of_week IN (
-           1, 2, 3, 4, 5, 6, 7)) NOT NULL REFERENCES days_of_week(dow_id),
-       customer_id INTEGER NOT NULL,
-       customer_type char(1) check (customer_type in ('i', 'o')) NOT NULL,
-       dough_id INTEGER NOT NULL
-             REFERENCES doughs(dough_id),
-       shape_id INTEGER NOT NULL
-             REFERENCES shapes(shape_id),
-       amt INTEGER NOT NULL CHECK (amt > 0),
-       order_created_at TIMESTAMPTZ DEFAULT now(),
+       day_of_week SMALLINT NOT NULL REFERENCES days_of_week(dow_id),
+       customer_id uuid NOT NULL,
+       customer_type char(1),
+       dough_id uuid NOT NULL REFERENCES doughs(dough_id),
+       shape_id uuid NOT NULL REFERENCES shapes(shape_id),
+       amt INTEGER NOT NULL,
+       modified_at TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (day_of_week, customer_id, dough_id, shape_id),
        FOREIGN KEY (customer_id, customer_type) 
-               references parties (party_id, party_type)
+                    references parties (party_id, party_type),
+       CONSTRAINT dow_in_1_thru_7 check (day_of_week IN (1, 2, 3, 4, 5, 6, 7)),
+       CONSTRAINT customer_type_i_or_o CHECK (customer_type in ('i', 'o')),
+       CONSTRAINT amt_greater_than_0 CHECK (amt > 0)
 );
 
+
 CREATE TABLE holds (
-       hold_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-       day_of_week SMALLINT check (day_of_week IN (
-           1, 2, 3, 4, 5, 6, 7)) NOT NULL,
-       customer_id INTEGER NOT NULL,
-       dough_id INTEGER NOT NULL
-             REFERENCES doughs(dough_id),
-       shape_id INTEGER NOT NULL
-             REFERENCES shapes(shape_id),
+       day_of_week SMALLINT NOT NULL,
+       customer_id uuid NOT NULL,
+       dough_id uuid NOT NULL REFERENCES doughs(dough_id),
+       shape_id uuid NOT NULL REFERENCES shapes(shape_id),
        start_date DATE NOT NULL,
        resume_date DATE,
        decrease_percent INTEGER NOT NULL,
+       modified_at TIMESTAMPTZ DEFAULT now(),
+       PRIMARY KEY (day_of_week, customer_id, dough_id, shape_id, start_date),
        FOREIGN KEY (day_of_week, customer_id, dough_id, shape_id)
                REFERENCES standing_orders (day_of_week, customer_id, dough_id, shape_id),
+       CONSTRAINT dow_in_1_thru_7 check (day_of_week IN (1, 2, 3, 4, 5, 6, 7)),
        CONSTRAINT start_in_present_or_future CHECK (start_date >= now()::date),
        CONSTRAINT start_in_next_6_mons CHECK (start_date < now()::date + interval '6 months'),
        CONSTRAINT resume_in_present_or_future CHECK (resume_date >= now()::date),
@@ -244,6 +259,7 @@ AS (
     SELECT * FROM phone_book
     WHERE type = 'mobile'
 )
+
 SELECT COALESCE (ph.name, pe.first_name) AS name, 
        s.hire_date, s.is_active, COALESCE (ph.phone_no, 'none') AS mobile
 FROM staff_st as s
@@ -348,47 +364,88 @@ AND (SELECT date_part('dow', CURRENT_DATE)) + d.lead_time_days = so.day_of_week;
 
 
 CREATE OR REPLACE FUNCTION
-get_batch_weight(which_dough INTEGER)
+get_batch_weight(which_dough VARCHAR)
 RETURNS numeric AS
 'SELECT (SELECT COALESCE (sum(amt * grams), 0)
    FROM todays_orders
-  WHERE dough_id = which_dough) +
+  WHERE dough_name ILIKE which_dough) +
   (SELECT COALESCE (sum(amt * grams), 0)
      FROM standing_minus_holds
-   WHERE dough_id = which_dough)
+   WHERE dough_name ILIKE which_dough)
 ;'
 LANGUAGE SQL
 IMMUTABLE
 RETURNS NULL ON NULL INPUT;
 
 CREATE OR REPLACE VIEW dough_info AS 
-SELECT di.dough_id, di.bakers_percent, i.ingredient_name AS ingredient, i.is_flour, 
-       di.percent_in_sour, di.percent_in_poolish, di.percent_in_soaker
+SELECT di.dough_id, d.dough_name, di.bakers_percent, i.ingredient_name AS ingredient, 
+       i.is_flour, di.percent_in_sour, di.percent_in_poolish, di.percent_in_soaker
   FROM dough_ingredients AS di
   JOIN ingredients AS i ON di.ingredient_id = i.ingredient_id
+  JOIN doughs as d on di.dough_id = d.dough_id
  ORDER BY di.dough_id, i.is_flour DESC, di.bakers_percent DESC;
 
-CREATE OR REPLACE FUNCTION bak_per(which_doe integer)
+CREATE OR REPLACE FUNCTION bak_per(which_doe VARCHAR)
   returns numeric AS
           'SELECT sum(bakers_percent) OVER (PARTITION BY dough_id)
-          FROM dough_info WHERE dough_id = which_doe;'
+          FROM dough_info WHERE dough_name ILIKE which_doe;'
  LANGUAGE SQL
 IMMUTABLE
   RETURNS NULL ON NULL INPUT;
 
 
---usage: SELECT bak_per2(4, 'cran%');
-CREATE OR REPLACE FUNCTION bak_per2(which_doe integer, mod VARCHAR)
+CREATE OR REPLACE FUNCTION pid(p_name VARCHAR)
+  returns uuid AS
+          'SELECT party_id FROM parties
+          WHERE party_name ILIKE p_name;'
+ LANGUAGE SQL
+IMMUTABLE
+  RETURNS NULL ON NULL INPUT;
+
+
+CREATE OR REPLACE FUNCTION did(d_name VARCHAR)
+  returns uuid AS
+          'SELECT dough_id FROM doughs
+          WHERE dough_name ILIKE d_name;'
+ LANGUAGE SQL
+IMMUTABLE
+  RETURNS NULL ON NULL INPUT;
+
+
+CREATE OR REPLACE FUNCTION iid(i_name VARCHAR)
+  returns uuid AS
+          'SELECT ingredient_id FROM ingredients
+          WHERE ingredient_name ILIKE i_name;'
+ LANGUAGE SQL
+IMMUTABLE
+  RETURNS NULL ON NULL INPUT;
+
+
+CREATE OR REPLACE FUNCTION sid(s_name VARCHAR)
+  returns uuid AS
+          'SELECT shape_id FROM shapes
+          WHERE shape_name ILIKE s_name;'
+ LANGUAGE SQL
+IMMUTABLE
+  RETURNS NULL ON NULL INPUT;
+
+
+--usage: SELECT bak_per2('kam%', 'cran%');
+CREATE OR REPLACE FUNCTION bak_per2(which_doe VARCHAR, mod VARCHAR)
   returns numeric AS
 
           'SELECT (SELECT SUM(dm.bakers_percent) 
-           FROM dough_mod AS dm
-           WHERE dough_id = which_doe) +
+           FROM dough_mods AS dm
+           JOIN doughs AS d on dm.dough_id = d.dough_id
+           WHERE d.dough_name ILIKE which_doe) +
            (SELECT SUM(di.bakers_percent)
            FROM dough_ingredients AS di
-           WHERE dough_id = which_doe
+           JOIN doughs as d on di.dough_id = d.dough_id
+           WHERE d.dough_name ILIKE which_doe
            AND di.ingredient_id NOT IN (SELECT ingredient_id 
-           FROM dough_mod WHERE dough_id = which_doe 
+           FROM dough_mods AS dm
+           JOIN doughs AS d on dm.dough_id = d.dough_id
+           WHERE d.dough_name ILIKE which_doe 
            AND mod_name LIKE mod));'
 
 LANGUAGE SQL
@@ -397,64 +454,68 @@ IMMUTABLE
 
 
 --usage: SELECT "%", ingredient, overall, sour, poolish, soaker, final FROM formula(1);
-CREATE OR REPLACE FUNCTION formula(my_dough_id integer)
+CREATE OR REPLACE FUNCTION formula(my_dough VARCHAR)
        RETURNS TABLE (dough character varying, "%" numeric, ingredient character varying,
        overall numeric, sour numeric, poolish numeric, soaker numeric, final numeric) AS $$
        BEGIN
              RETURN QUERY
-                    SELECT d.dough_name, din.bakers_percent, din.ingredient,
-                    ROUND(get_batch_weight(my_dough_id) * din.bakers_percent /
-                          bak_per(my_dough_id), 0),
-                    ROUND(get_batch_weight(my_dough_id) * din.bakers_percent /
-                          bak_per(my_dough_id) * din.percent_in_sour /100, 0),
-                    ROUND(get_batch_weight(my_dough_id) * din.bakers_percent /
-                          bak_per(my_dough_id) * din.percent_in_poolish /100, 1),
-                    ROUND(get_batch_weight(my_dough_id) * din.bakers_percent /
-                          bak_per(my_dough_id) * din.percent_in_soaker /100, 0),
-                    ROUND(get_batch_weight(my_dough_id) * din.bakers_percent /
-                          bak_per(my_dough_id) * (1- (din.percent_in_sour + 
+                    SELECT din.dough_name, din.bakers_percent, din.ingredient,
+                    ROUND(get_batch_weight(my_dough) * din.bakers_percent /
+                          bak_per(my_dough), 0),
+                    ROUND(get_batch_weight(my_dough) * din.bakers_percent /
+                          bak_per(my_dough) * din.percent_in_sour /100, 0),
+                    ROUND(get_batch_weight(my_dough) * din.bakers_percent /
+                          bak_per(my_dough) * din.percent_in_poolish /100, 1),
+                    ROUND(get_batch_weight(my_dough) * din.bakers_percent /
+                          bak_per(my_dough) * din.percent_in_soaker /100, 0),
+                    ROUND(get_batch_weight(my_dough) * din.bakers_percent /
+                          bak_per(my_dough) * (1- (din.percent_in_sour + 
                           din.percent_in_poolish + din.percent_in_soaker)/100), 0)
                     FROM dough_info AS din
-                    JOIN doughs AS d on din.dough_id = d.dough_id
-                    WHERE din.dough_id = my_dough_id;
+                    WHERE din.dough_name LIKE my_dough;
       END;
 $$ LANGUAGE plpgsql;
 
---useage: SELECT * FROM modded_formula(4, 'cran%');
-CREATE OR REPLACE FUNCTION modded_formula(get_dough_id integer, get_mod VARCHAR)
+--useage: SELECT * FROM modded_formula('Kam%', 'cran%');
+CREATE OR REPLACE FUNCTION modded_formula(get_dough VARCHAR, get_mod VARCHAR)
        RETURNS TABLE (dough character varying, "%" numeric, ingredient character varying,
        overall numeric, sour numeric, poolish numeric, soaker numeric, final numeric) AS $$
        BEGIN
              RETURN QUERY
-WITH dmu AS (SELECT dm.dough_id, dm.ingredient_id, i.ingredient_name, i.is_flour, dm.bakers_percent, 
+            WITH dmu (
+                dough_name, dough_id, ingredient_id, ingredient_name, is_flour, bakers_percent,
+                percent_in_sour, percent_in_poolish, percent_in_soaker
+                ) AS 
+            (SELECT d.dough_name, dm.dough_id, dm.ingredient_id, i.ingredient_name, i.is_flour, dm.bakers_percent, 
             dm.percent_in_sour, dm.percent_in_poolish, dm.percent_in_soaker
-FROM dough_mod as dm 
+FROM dough_mods as dm 
 JOIN ingredients as i on dm.ingredient_id = i.ingredient_id
-     WHERE dm.mod_name LIKE get_mod AND dm.dough_id = get_dough_id
+JOIN doughs as d on dm.dough_id = d.dough_id
+     WHERE dm.mod_name LIKE get_mod AND d.dough_name ILIKE get_dough
      UNION ALL
-SELECT di.dough_id, di.ingredient_id, i.ingredient_name, i.is_flour, di.bakers_percent, 
+SELECT d.dough_name, di.dough_id, di.ingredient_id, i.ingredient_name, i.is_flour, di.bakers_percent, 
              di.percent_in_sour, di.percent_in_poolish, di.percent_in_soaker
 FROM dough_ingredients as di 
 JOIN ingredients as i on di.ingredient_id = i.ingredient_id
-WHERE di.dough_id = get_dough_id
-AND di.ingredient_id NOT IN (SELECT ingredient_id FROM dough_mod)
+JOIN doughs as d on di.dough_id = d.dough_id
+WHERE d.dough_name ILIKE get_dough
+AND di.ingredient_id NOT IN (SELECT ingredient_id FROM dough_mods)
 ORDER BY is_flour DESC, bakers_percent DESC)
 
-                    SELECT d.dough_name, dmu.bakers_percent, dmu.ingredient_name,
-                    ROUND(get_batch_weight(get_dough_id) * dmu.bakers_percent /
-                          bak_per2(get_dough_id, get_mod), 0),
-                    ROUND(get_batch_weight(get_dough_id) * dmu.bakers_percent /
-                          bak_per2(get_dough_id, get_mod) * dmu.percent_in_sour /100, 0),
-                    ROUND(get_batch_weight(get_dough_id) * dmu.bakers_percent /
-                          bak_per2(get_dough_id, get_mod) * dmu.percent_in_poolish /100, 1),
-                    ROUND(get_batch_weight(get_dough_id) * dmu.bakers_percent /
-                          bak_per2(get_dough_id, get_mod) * dmu.percent_in_soaker /100, 0),
-                    ROUND(get_batch_weight(get_dough_id) * dmu.bakers_percent /
-                          bak_per2(get_dough_id, get_mod) * (1- (dmu.percent_in_sour + 
-                          dmu.percent_in_poolish + dmu.percent_in_soaker)/100), 0)
-                    FROM dmu 
-                    JOIN doughs AS d on dmu.dough_id = d.dough_id
-                    WHERE dmu.dough_id = get_dough_id
+                    SELECT dough_name, bakers_percent, ingredient_name,
+                    ROUND(get_batch_weight(get_dough) * bakers_percent /
+                          bak_per2(get_dough, get_mod), 0),
+                    ROUND(get_batch_weight(get_dough) * bakers_percent /
+                          bak_per2(get_dough, get_mod) * percent_in_sour /100, 0),
+                    ROUND(get_batch_weight(get_dough) * bakers_percent /
+                          bak_per2(get_dough, get_mod) * percent_in_poolish /100, 1),
+                    ROUND(get_batch_weight(get_dough) * bakers_percent /
+                          bak_per2(get_dough, get_mod) * percent_in_soaker /100, 0),
+                    ROUND(get_batch_weight(get_dough) * bakers_percent /
+                          bak_per2(get_dough, get_mod) * (1- (percent_in_sour + 
+                          percent_in_poolish + percent_in_soaker)/100), 0)
+                    FROM dmu
+                    WHERE dough_name LIKE get_dough
                     ;
       END;
 $$ LANGUAGE plpgsql;
@@ -483,7 +544,7 @@ INSERT INTO parties (party_type, party_name)
 VALUES ('i', 'Blow'),
        ('i', 'Bar'),
        ('o', 'Madison Sourdough'),
-       ('o', 'Meadlowlark Organics'),
+       ('o', 'Meadowlark Organics'),
        ('o', 'Woodmans'),
        ('o', 'Willy St Coop'),
        ('o', 'King Arthur'),
@@ -492,13 +553,26 @@ VALUES ('i', 'Blow'),
        ('o', 'Siggis'),
        ('o', 'New Glarus Brewery'),
        ('o', 'Eden'),
+       ('o', 'Dept of Revenue'),
+       ('o', 'Westside Farmers Market'),
        ('i', 'Latte')
 ;
 
+INSERT INTO phones (party_id, phone_type, phone_no)
+VALUES (pid('Blow'), 'm', '555-1212'),
+       (pid('Blow'), 'w', '608-555-0000'),
+       (pid('Madison Sourdough'), 'b', '608-442-8009'),
+       (pid('Woodmans'), 'b', '608-555-1111'),
+       (pid('Bar'), 'm', '608-555-2222'),
+       (pid('Meadowlark Organics'), 'b', '608-555-3333'),
+       (pid('Bar'), 'e', '608-555-1234'),
+       (pid('Willy St Coop'), 'f', '608-000-0000')
+;
+
 INSERT INTO people_st (party_id, first_name)
-VALUES (1, 'Joe'),
-       (2, 'Foo'),
-       (13, 'Moka-Choka')
+VALUES ((SELECT party_id FROM parties WHERE party_name = 'Blow' AND now() - modified_at < interval '1 sec'), 'Joe'),
+       ((SELECT party_id FROM parties WHERE party_name = 'Bar' AND now() - modified_at < interval '1 sec'), 'Foo'),
+       ((SELECT party_id FROM parties WHERE party_name = 'Latte' AND now() - modified_at < interval '1 sec'), 'Moka-Choka')
 ;
 
             --shapes
@@ -521,140 +595,137 @@ INSERT INTO doughs (dough_name, lead_time_days)
 
             --ingredients
 INSERT INTO ingredients (ingredient_name, manufacturer_id, manufacturer_type, is_flour)
-     VALUES ('Bolted Red Fife Flour', 4, 'o', TRUE),
-            ('Kamut Flour', 3, 'o', TRUE),
-            ('Rye Flour', 3, 'o', TRUE),
-            ('All Purpose Flour', 7, 'o', TRUE),
-            ('Bread Flour', 7, 'o', TRUE),
-            ('water', 1, 'i', FALSE),
-            ('High Extraction Flour', 3, 'o', TRUE),
-            ('Sea Salt', 8, 'o', FALSE),
-            ('leaven', 1, 'i', FALSE),
-            ('saf-instant yeast', '9', 'o', FALSE),
-            ('dried cranberries', 6, 'o', FALSE),
-            ('walnuts', 6, 'o', FALSE),
-            ('Turkey Red Flour', 4, 'o', TRUE),
-            ('Filmjolk', 10, 'o', FALSE),
-            ('Barley Malt Syrup', 11, 'o', FALSE),
-            ('Sprouted Rye Berries', 1, 'i', FALSE),
-            ('Whole Flax Seeds', 6, 'o', FALSE),
-            ('Ground Flax Seeds', 6, 'o', FALSE),
-            ('Sesame Seeds', 6, 'o', FALSE),
-            ('pumpkin Seeds', 6, 'o', FALSE)
+     VALUES ('Bolted Red Fife Flour', pid('Meadowlark Organics'), 'o', TRUE),
+            ('Kamut Flour', pid('Madison Sourdough'), 'o', TRUE),
+            ('Rye Flour', pid('Madison Sourdough'), 'o', TRUE),
+            ('All Purpose Flour', pid('King Arthur'), 'o', TRUE),
+            ('Bread Flour', pid('King Arthur'), 'o', TRUE),
+            ('water', pid('Blow'), 'i', FALSE),
+            ('High Extraction Flour', pid('Madison Sourdough'), 'o', TRUE),
+            ('Sea Salt', pid('Redmond'), 'o', FALSE),
+            ('leaven', pid('Blow'), 'i', FALSE),
+            ('saf-instant yeast', pid('LeSaffre'), 'o', FALSE),
+            ('dried cranberries', pid('Willy St Coop'), 'o', FALSE),
+            ('walnuts', pid('Willy St Coop'), 'o', FALSE),
+            ('Turkey Red Flour', pid('Meadowlark Organics'), 'o', TRUE),
+            ('Filmjolk', pid('Siggis'), 'o', FALSE),
+            ('Barley Malt Syrup', pid('Eden'), 'o', FALSE),
+            ('Sprouted Rye Berries', pid('Blow'), 'i', FALSE),
+            ('Whole Flax Seeds', pid('Willy St Coop'), 'o', FALSE),
+            ('Ground Flax Seeds', pid('Willy St Coop'), 'o', FALSE),
+            ('Sesame Seeds', pid('Willy St Coop'), 'o', FALSE),
+            ('pumpkin Seeds', pid('Willy St Coop'), 'o', FALSE)
 ;
 
 INSERT INTO staff_st (party_id, party_type, ssn, is_active, hire_date,
        street_no, street, zip)
-VALUES (1, 'i', '123-45-6789', TRUE, '2019-10-01', '2906', 'Barlow St', 53705),
-       (2, 'i', '121-21-2121', FALSE, '2017-12-30', '924', 'Williamson St', 53703),
-       (13, 'i', '123-45-6666', TRUE, '2019-12-07', '2906', 'Barlow St', 53705)
+VALUES (pid('Blow'), 'i', '123-45-6789', TRUE, '2019-10-01', '2906', 'Barlow St', 53705),
+       (pid('Bar'), 'i', '121-21-2121', FALSE, '2017-12-30', '924', 'Williamson St', 53703),
+       (pid('Latte'), 'i', '123-45-6666', TRUE, '2019-12-07', '2906', 'Barlow St', 53705)
 ;
 
 INSERT INTO organization_st (party_id, party_type, org_type)
-VALUES (3, 'o', 'b'),
-       (4, 'o', 'n')
+VALUES (pid('Madison Sourdough'), 'o', 'b'),
+       (pid('Meadowlark Organics'), 'o', 'b'),
+       (pid('Woodmans'), 'o', 'b'),
+       (pid('Willy St Coop'), 'o', 'c'),
+       (pid('King Arthur'), 'o', 'b'),
+       (pid('Dept of Revenue'), 'o', 'g'),
+       (pid('Westside Farmers Market'), 'o', 'n'),
+       (pid('Siggis'), 'o', 'b'),
+       (pid('Eden'), 'o', 'b'),
+       (pid('Redmond'), 'o', 'b'),
+       (pid('LeSaffre'), 'o', 'b')
 ;
 
 INSERT INTO ein_numbs (party_id, party_type, ein)
-VALUES (3, 'o', '01-23456789'),
-       (4, 'o', '11-11111111')
-;
-
-INSERT INTO phones (party_id, phone_type, phone_no)
-VALUES (1, 'm', '555-1212'),
-       (1, 'w', '608-555-0000'),
-       (3, 'b', '608-442-8009'),
-       (5, 'b', '608-555-1111'),
-       (2, 'm', '608-555-2222'),
-       (4, 'b', '608-555-3333'),
-       (2, 'e', '608-555-1234'),
-       (6, 'f', '608-000-0000')
+VALUES (pid('Madison Sourdough'), 'o', '01-23456789'),
+       (pid('Meadowlark Organics'), 'o', '11-11111111')
 ;
 
 INSERT INTO emails (party_id, email_type, email)
-VALUES (1, 'p', 'bubba@gmail.com'),
-       (1, 'w', 'punkinhead_sucks@traitors.com')
+VALUES (pid('Blow'), 'p', 'bubba@gmail.com'),
+       (pid('Dept of Revenue'), 'w', 'punkinhead_sucks@traitors.com')
 ;
 
 
             --dough_shapes
 INSERT INTO dough_shapes (dough_id, shape_id, ds_grams)
-     VALUES (4, 1, 1600),
-            (3, 2, 1280),
-            (5, 4, 105),
-            (1, 1, 1600),
-            (1, 5, 120),
-            (2, 3, 400)
+     VALUES (did('Kamut Sourdough'), sid('12" Boule'), 1600),
+            (did('rugbrod'), sid('4" pan loaves'), 1280),
+            (did('pita bread'), sid('7" pita'), 105),
+            (did('cranberry walnut'), sid('12" Boule'), 1600),
+            (did('cranberry walnut'), sid('hard rolls'), 120),
+            (did('pizza dough'), sid('16" pizza'), 400)
 ;
 
             --dough_ingredients
 INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent,
             percent_in_sour, percent_in_poolish, percent_in_soaker)
-     VALUES (4, 2, 40, 0, 0, 20),
-            (4, 4, 30, 33, 0, 0),
-            (4, 7, 30, 33, 0, 20),
-            (4, 6, 80, 20, 0, 18),
-            (4, 8, 1.9, 0, 0, 0),
-            (1, 2, 40, 0, 0, 20),
-            (1, 4, 30, 36, 0, 0),
-            (1, 7, 30, 36, 0, 20),
-            (1, 6, 70, 22, 0, 18),
-            (1, 8, 2.0, 0, 0, 0),
-            (1, 11, 25, 0, 0, 0),
-            (1, 12, 25, 0, 0, 0),
-            (5, 1, 50, 0, 0, 0),
-            (5, 4, 50, 5.4, 0, 0),
-            (5, 6, 64, 2.4, 0, 0),
-            (5, 8, 1.9, 0, 0, 0),
-            (2, 5, 80, 0, 25, 0),
-            (2, 2, 10, 0, 0, 0),
-            (2, 7, 10, 0, 0, 0),
-            (2, 6, 68, 0, 20, 0),
-            (2, 8, 1.9, 0, 0, 0),
-            (2, 10, .05, 0, 100, 0)
+     VALUES (did('Kamut Sourdough'), iid('Kamut Flour'), 40, 0, 0, 20),
+            (did('Kamut Sourdough'), iid('All Purpose Flour'), 30, 33, 0, 0),
+            (did('Kamut Sourdough'), iid('High Extraction Flour'), 30, 33, 0, 20),
+            (did('Kamut Sourdough'), iid('water'), 80, 20, 0, 18),
+            (did('Kamut Sourdough'), iid('Sea Salt'), 1.9, 0, 0, 0),
+            (did('cranberry walnut'), iid('Kamut Flour'), 40, 0, 0, 20),
+            (did('cranberry walnut'), iid('All Purpose Flour'), 30, 36, 0, 0),
+            (did('cranberry walnut'), iid('High Extraction Flour'), 30, 36, 0, 20),
+            (did('cranberry walnut'), iid('water'), 70, 22, 0, 18),
+            (did('cranberry walnut'), iid('Sea Salt'), 2.0, 0, 0, 0),
+            (did('cranberry walnut'), iid('dried cranberries'), 25, 0, 0, 0),
+            (did('cranberry walnut'), iid('walnuts'), 25, 0, 0, 0),
+            (did('pita bread'), iid('Bolted Red Fife Flour'), 50, 0, 0, 0),
+            (did('pita bread'), iid('All Purpose Flour'), 50, 5.4, 0, 0),
+            (did('pita bread'), iid('water'), 64, 2.4, 0, 0),
+            (did('pita bread'), iid('Sea Salt'), 1.9, 0, 0, 0),
+            (did('pizza dough'), iid('Bread Flour'), 80, 0, 25, 0),
+            (did('pizza dough'), iid('Kamut Flour'), 10, 0, 0, 0),
+            (did('pizza dough'), iid('High Extraction Flour'), 10, 0, 0, 0),
+            (did('pizza dough'), iid('water'), 68, 0, 20, 0),
+            (did('pizza dough'), iid('Sea Salt'), 1.9, 0, 0, 0),
+            (did('pizza dough'), iid('saf-instant yeast'), .05, 0, 100, 0)
 ;
 
 --any ingredient in this table will supercede dough_ingredient values
 --otherwise, all dough_ingredient values will be used
-INSERT INTO dough_mod (mod_name, dough_id, ingredient_id, bakers_percent,
+INSERT INTO dough_mods (mod_name, dough_id, ingredient_id, bakers_percent,
        percent_in_sour, percent_in_poolish, percent_in_soaker)
-       VALUES ('cranberry', 4, 11, 20, 0, 0, 0),
-              ('cranberry', 4, 6, 75, 20, 0, 18),
-              ('cranberry', 4, 8, 2.0, 0, 0, 0)
+       VALUES ('cranberry', did('Kamut Sourdough'), iid('dried cranberries'), 20, 0, 0, 0),
+              ('cranberry', did('Kamut Sourdough'), iid('water'), 75, 20, 0, 18),
+              ('cranberry', did('Kamut Sourdough'), iid('Sea Salt'), 2.0, 0, 0, 0)
 ;
 
             --special_orders
 INSERT INTO special_orders (delivery_date, customer_id, customer_type, dough_id,
-            shape_id, amt, order_created_at)
+            shape_id, amt, modified_at)
        VALUES 
         --kamut
-            ((SELECT now()::date + interval '2 days'), 1, 'i', 4, 1, 1,
-            (SELECT now())),
+            ((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', did('Kamut Sourdough'), 
+                sid('12" Boule'), 1, (SELECT now())),
 
         --pizza
-            ((SELECT now()::date + interval '1 day'), 1, 'i', 2, 3, 6,
-            (SELECT now())),
+            ((SELECT now()::date + interval '1 day'), pid('Blow'), 'i', did('pizza dough'), 
+                sid('16" pizza'), 6, (SELECT now())),
 
         --pita bread
-            ((SELECT now()::date + interval '1 day'), 1, 'i', 5, 4, 8,
-            (SELECT now())),
+            ((SELECT now()::date + interval '1 day'), pid('Blow'), 'i', did('pita bread'), 
+                sid('7" pita'), 8, (SELECT now())),
 
         --pita bread
-            ((SELECT now()::date + interval '1 day'), 1, 'i', 5, 4, 4,
-            (SELECT now())),
-
+            ((SELECT now()::date + interval '1 day'), pid('Blow'), 'i', did('pita bread'), 
+                sid('7" pita'), 4, (SELECT now())),
+        
         --rugbrod
-            ((SELECT now()::date + interval '2 days'), 1, 'i', 3, 2, 2,
-            (SELECT now())),
+            ((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', did('rugbrod'), 
+                sid('4" pan loaves'), 2, (SELECT now())),
 
         --cranberry walnut
-            ((SELECT now()::date + interval '2 days'), 1, 'i', 1, 5, 4,
-            (SELECT now())),
+            ((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', did('cranberry walnut'), 
+                sid('hard rolls'), 4, (SELECT now())),
 
         --cranberry walnut
-            ((SELECT now()::date + interval '2 days'), 1, 'i', 1, 1, 1,
-            (SELECT now()))
-
+            ((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', did('cranberry walnut'), 
+                sid('12" Boule'), 1, (SELECT now()))
 ;
 
 INSERT INTO days_of_week (dow_id, dow_names)
@@ -669,25 +740,39 @@ INSERT INTO days_of_week (dow_id, dow_names)
 ;
 
 INSERT INTO standing_orders (day_of_week, customer_id, customer_type, dough_id,
-            shape_id, amt, order_created_at)
+            shape_id, amt, modified_at)
        VALUES 
             --kamut
-            (1, 1, 'i', 4, 1, 2, (SELECT now())),
-            (2, 1, 'i', 4, 1, 2, (SELECT now())),
-            (3, 1, 'i', 4, 1, 1, (SELECT now())),
-            (4, 1, 'i', 4, 1, 1, (SELECT now())),
-            (5, 1, 'i', 4, 1, 1, (SELECT now())),
-            (6, 1, 'i', 4, 1, 1, (SELECT now())),
-            (7, 1, 'i', 4, 1, 2, (SELECT now()))
+            (1, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 2, (SELECT now())),
+            (2, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 2, (SELECT now())),
+            (3, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 1, (SELECT now())),
+            (4, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 1, (SELECT now())),
+            (5, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 1, (SELECT now())),
+            (6, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 1, (SELECT now())),
+            (7, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 2, (SELECT now()))
 ;
 
 INSERT INTO holds (day_of_week, customer_id, dough_id, shape_id, start_date, resume_date, decrease_percent)
        VALUES
-            (1, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50),
-            (2, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50),
-            (3, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
-            (4, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
-            (5, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
-            (6, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
-            (7, 1, 4, 1, (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50)
+            (1, pid('Blow'), did('Kamut Sourdough'), sid('12" Boule'), 
+            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50),
+        
+            (2, pid('Blow'), did('Kamut Sourdough'), sid('12" Boule'), 
+            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50),
+
+            (3, pid('Blow'), did('Kamut Sourdough'), sid('12" Boule'), 
+            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+
+            (4, pid('Blow'), did('Kamut Sourdough'), sid('12" Boule'), 
+            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+        
+            (5, pid('Blow'), did('Kamut Sourdough'), sid('12" Boule'), 
+            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+
+            (6, pid('Blow'), did('Kamut Sourdough'), sid('12" Boule'), 
+            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+
+            (7, pid('Blow'), did('Kamut Sourdough'), sid('12" Boule'), 
+            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50)
 ;
+
