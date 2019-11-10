@@ -558,7 +558,7 @@ SELECT p.party_name as maker, i.ingredient_name as item, ROUND(cc.old_cost, 2) A
 
 
 CREATE OR REPLACE VIEW cost_list AS
-SELECT i.ingredient_name, ROUND(ic.cost, 2) AS cost, ic.grams, 
+SELECT i.ingredient_id, i.ingredient_name, ROUND(ic.cost, 2) AS cost, ic.grams, 
        ROUND(ic.cost / ic.grams, 5) AS cost_per_g 
   FROM ingredient_costs AS ic
   JOIN ingredients as i on ic.ingredient_id = i.ingredient_id;
@@ -698,6 +698,33 @@ ORDER BY is_flour DESC, bakers_percent DESC)
                     ;
       END;
 $$ LANGUAGE plpgsql;
+
+
+--usage: SELECT "%", ingredient, overall, sour, poolish, soaker, final FROM formula('cran%');
+CREATE OR REPLACE FUNCTION form(my_dough VARCHAR)
+       RETURNS TABLE (dough character varying, ingredient character varying,
+       grams NUMERIC, cost numeric) AS $$
+       BEGIN
+             RETURN QUERY
+                    SELECT din.dough_name, din.ingredient,
+                    ROUND(get_batch_weight(my_dough) * din.bakers_percent /
+                          bak_per(my_dough), 0),
+                    ROUND(get_batch_weight(my_dough) * din.bakers_percent /
+                          bak_per(my_dough), 0) * cl.cost_per_g AS item_cost
+                    FROM dough_info AS din
+                    JOIN cost_list as cl on din.ingredient = cl.ingredient_name
+                    WHERE din.dough_name LIKE my_dough;
+      END;
+$$ LANGUAGE plpgsql;
+
+-- usage: SELECT cost_per_kg('cran%');
+CREATE OR REPLACE FUNCTION cost_per_kg(which_do VARCHAR)
+  returns numeric AS
+          'SELECT round(SUM(cost) / (SUM(grams) / 1000), 2) 
+          FROM form(which_do);'
+ LANGUAGE SQL
+IMMUTABLE
+  RETURNS NULL ON NULL INPUT;
 
 
        --Useage: SELECT * FROM phone_search('mad%');
