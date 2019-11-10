@@ -556,6 +556,16 @@ SELECT p.party_name, d.dough_name, s.shape_name, dw.dow_names,
   JOIN days_of_week AS dw on sc.day_of_week = dw.dow_id;
 
 
+CREATE OR REPLACE VIEW cost_change_list AS
+SELECT p.party_name as maker, i.ingredient_name as item, cc.old_cost, 
+       cc.new_cost, 1000 * cc.old_cost / grams as old_cost_per_kg, 
+       1000 * cc.new_cost / grams as new_cost_per_kg, cc.grams, cc.change_time
+  FROM cost_changes as cc
+  JOIN ingredients as i on cc.ingredient_id = i.ingredient_id
+  JOIN parties as p on cc.maker_id = p.party_id
+ WHERE maker_id = p.party_id;
+
+
 CREATE OR REPLACE FUNCTION bak_per(which_doe VARCHAR)
   returns numeric AS
           'SELECT sum(bakers_percent) OVER (PARTITION BY dough_id)
@@ -762,9 +772,9 @@ VALUES (pid('Blow'), 'm', '555-1212'),
 ;
 
 INSERT INTO people_st (party_id, first_name)
-VALUES ((SELECT party_id FROM parties WHERE party_name = 'Blow' AND now() - modified < interval '1 sec'), 'Joe'),
-       ((SELECT party_id FROM parties WHERE party_name = 'Bar' AND now() - modified < interval '1 sec'), 'Foo'),
-       ((SELECT party_id FROM parties WHERE party_name = 'Latte' AND now() - modified < interval '1 sec'), 'Moka-Choka')
+VALUES ((SELECT party_id FROM parties WHERE party_name = 'Blow' AND now() - modified < interval '10 sec'), 'Joe'),
+       ((SELECT party_id FROM parties WHERE party_name = 'Bar' AND now() - modified < interval '10 sec'), 'Foo'),
+       ((SELECT party_id FROM parties WHERE party_name = 'Latte' AND now() - modified < interval '10 sec'), 'Moka-Choka')
 ;
 
             --shapes
@@ -985,11 +995,6 @@ UPDATE parties
 SET party_name = 'Dept of Shenanigans'
 WHERE party_name Like 'Dept%';
 
-SELECT * 
-FROM standing_change_history;
-
-
-SELECT party_id, party_name, created, modified, modified - created AS time_diff
-FROM parties
-WHERE party_name Like 'Dept%';
-
+UPDATE ingredient_costs
+   SET cost = 5.00
+ WHERE ingredient_id = iid('Kamut Flour')
