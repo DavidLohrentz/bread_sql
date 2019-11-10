@@ -116,12 +116,9 @@ CREATE TABLE emails (
 CREATE TABLE ingredients (
        ingredient_id uuid PRIMARY KEY default uuid_generate_v4(),
        ingredient_name VARCHAR(80) NOT NULL,
-       manufacturer_id uuid NOT NULL,
-       io char(1) check (io in ('i', 'o')) NOT NULL,
        is_flour BOOLEAN NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
-       modified TIMESTAMPTZ DEFAULT now(),
-       FOREIGN KEY (manufacturer_id, io) references parties (party_id, party_type)
+       modified TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE ingredient_costs (
@@ -130,7 +127,7 @@ CREATE TABLE ingredient_costs (
        mio CHAR(1) NOT NULL check (mio in ('i', 'o')),
        seller_id uuid NOT NULL, 
        sio CHAR(1) NOT NULL check (sio in ('i', 'o')),
-       cost money NOT NULL,
+       cost numeric(10,5) NOT NULL,
        grams numeric NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
@@ -146,8 +143,8 @@ CREATE TABLE cost_changes (
        mio CHAR(1) NOT NULL check (mio in ('i', 'o')),
        seller_id uuid NOT NULL, 
        sio CHAR(1) NOT NULL check (sio in ('i', 'o')),
-       old_cost money NOT NULL,
-       new_cost money NOT NULL,
+       old_cost numeric(10,5) NOT NULL,
+       new_cost numeric(10,5) NOT NULL,
        grams numeric NOT NULL,
        change_time TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (ingredient_id, maker_id, seller_id),
@@ -375,12 +372,6 @@ CREATE TABLE holds (
        CONSTRAINT decrease_more_than_0 CHECK (decrease_percent >0)
 );
 
-CREATE OR REPLACE VIEW ingredient_list AS 
-SELECT i.ingredient_id, i.ingredient_name as ingredient,
-       p.party_name as manufacturer
-  FROM ingredients AS i
-  JOIN parties as p ON i.manufacturer_id = p.party_id 
-       AND i.io = p.party_type;
 
 CREATE OR REPLACE VIEW phone_book AS 
 WITH typology (party_id, phone_type_abbr, type) AS
@@ -557,13 +548,20 @@ SELECT p.party_name, d.dough_name, s.shape_name, dw.dow_names,
 
 
 CREATE OR REPLACE VIEW cost_change_list AS
-SELECT p.party_name as maker, i.ingredient_name as item, cc.old_cost, 
-       cc.new_cost, 1000 * cc.old_cost / grams as old_cost_per_kg, 
-       1000 * cc.new_cost / grams as new_cost_per_kg, cc.grams, cc.change_time
+SELECT p.party_name as maker, i.ingredient_name as item, ROUND(cc.old_cost, 2) AS old_cost, 
+       ROUND(cc.new_cost, 2) AS new_cost, ROUND(cc.old_cost / grams, 5) AS old_cost_per_g, 
+       ROUND(cc.new_cost / grams, 5) as new_cost_per_g, cc.grams, cc.change_time
   FROM cost_changes as cc
   JOIN ingredients as i on cc.ingredient_id = i.ingredient_id
   JOIN parties as p on cc.maker_id = p.party_id
  WHERE maker_id = p.party_id;
+
+
+CREATE OR REPLACE VIEW cost_list AS
+SELECT i.ingredient_name, ROUND(ic.cost, 2) AS cost, ic.grams, 
+       ROUND(ic.cost / ic.grams, 5) AS cost_per_g 
+  FROM ingredient_costs AS ic
+  JOIN ingredients as i on ic.ingredient_id = i.ingredient_id;
 
 
 CREATE OR REPLACE FUNCTION bak_per(which_doe VARCHAR)
@@ -796,28 +794,54 @@ INSERT INTO doughs (dough_name, lead_time_days)
 ;
 
             --ingredients
-INSERT INTO ingredients (ingredient_name, manufacturer_id, io, is_flour)
-     VALUES ('Bolted Red Fife Flour', pid('Meadowlark Organics'), 'o', TRUE),
-            ('Kamut Flour', pid('Madison Sourdough'), 'o', TRUE),
-            ('Rye Flour', pid('Madison Sourdough'), 'o', TRUE),
-            ('All Purpose Flour', pid('King Arthur'), 'o', TRUE),
-            ('Bread Flour', pid('King Arthur'), 'o', TRUE),
-            ('water', pid('Blow'), 'i', FALSE),
-            ('High Extraction Flour', pid('Madison Sourdough'), 'o', TRUE),
-            ('Sea Salt', pid('Redmond'), 'o', FALSE),
-            ('leaven', pid('Blow'), 'i', FALSE),
-            ('saf-instant yeast', pid('LeSaffre'), 'o', FALSE),
-            ('dried cranberries', pid('Willy St Coop'), 'o', FALSE),
-            ('walnuts', pid('Willy St Coop'), 'o', FALSE),
-            ('Turkey Red Flour', pid('Meadowlark Organics'), 'o', TRUE),
-            ('Filmjolk', pid('Siggis'), 'o', FALSE),
-            ('Barley Malt Syrup', pid('Eden'), 'o', FALSE),
-            ('Sprouted Rye Berries', pid('Blow'), 'i', FALSE),
-            ('Whole Flax Seeds', pid('Willy St Coop'), 'o', FALSE),
-            ('Ground Flax Seeds', pid('Willy St Coop'), 'o', FALSE),
-            ('Sesame Seeds', pid('Willy St Coop'), 'o', FALSE),
-            ('pumpkin Seeds', pid('Willy St Coop'), 'o', FALSE)
+INSERT INTO ingredients (ingredient_name, is_flour)
+     VALUES ('Bolted Red Fife Flour', TRUE),
+            ('Kamut Flour', TRUE),
+            ('Rye Flour', TRUE),
+            ('All Purpose Flour', TRUE),
+            ('Bread Flour', TRUE),
+            ('water', FALSE),
+            ('High Extraction Flour', TRUE),
+            ('Sea Salt', FALSE),
+            ('leaven', FALSE),
+            ('saf-instant yeast', FALSE),
+            ('dried cranberries', FALSE),
+            ('walnuts', FALSE),
+            ('Turkey Red Flour', TRUE),
+            ('Filmjolk', FALSE),
+            ('Barley Malt Syrup', FALSE),
+            ('Sprouted Rye Berries', FALSE),
+            ('Whole Flax Seeds', FALSE),
+            ('Ground Flax Seeds', FALSE),
+            ('Sesame Seeds', FALSE),
+            ('pumpkin Seeds', FALSE)
 ;
+
+            --ingredient_costs
+INSERT INTO ingredient_costs (ingredient_id, maker_id, mio, seller_id, sio, cost, grams)
+     VALUES 
+            (iid('Bolted Red Fife Flour'), pid('Meadowlark Organics'), 'o', pid('Meadowlark Organics'), 'o', 7.00, 907),
+            (iid('Kamut Flour'), pid('Madison Sourdough'), 'o', pid('Madison Sourdough'), 'o', 5.20, 907),
+            (iid('Rye Flour'), pid('Madison Sourdough'), 'o', pid('Madison Sourdough'), 'o', 5.20, 907),
+            (iid('All Purpose Flour'), pid('King Arthur'), 'o', pid('Woodmans'), 'o', 2.20, 907),
+            (iid('Bread Flour'), pid('King Arthur'), 'o', pid('Woodmans'), 'o', 2.20, 907),
+            (iid('water'), pid('Woodmans'), 'o', pid('Woodmans'), 'o', .55, 3785),
+            (iid('High Extraction Flour'), pid('Madison Sourdough'), 'o', pid('Madison Sourdough'), 'o', 5.20, 907),
+            (iid('Sea Salt'), pid('Redmond'), 'o', pid('Willy St Coop'), 'o', 1.25, 450),
+            (iid('leaven'), pid('Blow'), 'i', pid('Blow'), 'i', .75, 300),
+            (iid('saf-instant yeast'), pid('LeSaffre'), 'o', pid('Willy St Coop'), 'o', 2.50, 450),
+            (iid('dried cranberries'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 7.50, 450),
+            (iid('walnuts'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 7.50, 450),
+            (iid('Turkey Red Flour'), pid('Meadowlark Organics'), 'o', pid('Meadowlark Organics'), 'o', 7.00, 907),
+            (iid('Filmjolk'), pid('Siggis'), 'o', pid('Woodmans'), 'o', 4.00, 2000),
+            (iid('Barley Malt Syrup'), pid('Eden'), 'o', pid('Willy St Coop'), 'o', 4.00, 566),
+            (iid('Sprouted Rye Berries'), pid('Blow'), 'i', pid('Blow'), 'i', 1.50, 450),
+            (iid('Whole Flax Seeds'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 3.00, 450),
+            (iid('Ground Flax Seeds'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 3.00, 450),
+            (iid('Sesame Seeds'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 3.50, 450),
+            (iid('pumpkin Seeds'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 4.50, 450)
+;
+
 
 INSERT INTO staff_st (party_id, party_type, ssn, is_active, hire_date,
        street_no, street, zip)
@@ -888,6 +912,7 @@ INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent,
             (did('pizza dough'), iid('saf-instant yeast'), .05, 0, 100, 0)
 ;
 
+
 --any ingredient in this table will supercede dough_ingredient values
 --otherwise, all dough_ingredient values will be used
 INSERT INTO dough_mods (mod_name, dough_id, ingredient_id, bakers_percent,
@@ -895,13 +920,6 @@ INSERT INTO dough_mods (mod_name, dough_id, ingredient_id, bakers_percent,
        VALUES ('cranberry', did('Kamut Sourdough'), iid('dried cranberries'), 20, 0, 0, 0),
               ('cranberry', did('Kamut Sourdough'), iid('water'), 75, 20, 0, 18),
               ('cranberry', did('Kamut Sourdough'), iid('Sea Salt'), 2.0, 0, 0, 0)
-;
-
-INSERT INTO ingredient_costs (
-       ingredient_id, maker_id, mio, seller_id, sio, cost, grams
-       ) VALUES
-       (iid('Kamut Flour'), pid('Madison Sourdough'), 'o',
-        pid('Madison Sourdough'), 'o', 5.20, 907)
 ;
 
             --special_orders
