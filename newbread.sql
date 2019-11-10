@@ -14,7 +14,8 @@ CREATE TABLE parties (
        party_id uuid default uuid_generate_v4(),
        party_type char(1) check (party_type in ('i', 'o')) NOT NULL,
        party_name VARCHAR(80) NOT NULL,
-       modified_at TIMESTAMPTZ DEFAULT now(),
+       created TIMESTAMPTZ DEFAULT now(),
+       modified TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (party_id, party_type)
 );
 
@@ -23,6 +24,8 @@ CREATE TABLE people_st (
        party_id uuid PRIMARY KEY,
        party_type CHAR(1) default 'i' check (party_type = 'i') NOT NULL,
        first_name VARCHAR(25) NOT NULL,
+       created TIMESTAMPTZ DEFAULT now(),
+       modified TIMESTAMPTZ DEFAULT now(),
        FOREIGN KEY (party_id, party_type) references parties (party_id, party_type))
 ;
 
@@ -42,6 +45,8 @@ CREATE TABLE staff_st (
        street_no VARCHAR(12) NOT NULL,
        street VARCHAR(30) NOT NULL,
        zip CHAR(5) NOT NULL REFERENCES zip_codes(zip),
+       created TIMESTAMPTZ DEFAULT now(),
+       modified TIMESTAMPTZ DEFAULT now(),
        FOREIGN KEY (party_id, party_type) references parties (party_id, party_type),
        FOREIGN KEY (party_id) references people_st (party_id),
        CONSTRAINT hire_date_after_1970 CHECK (hire_date > '1970-01-01'),
@@ -72,26 +77,49 @@ CREATE TABLE phones (
             (phone_type in ('w', 'h', 'f', 'b', 'm', 'e')),
             -- work, home, fax, business, mobile, emergency
        phone_no VARCHAR(25) UNIQUE NOT NULL,
+       created TIMESTAMPTZ DEFAULT now(),
+       modified TIMESTAMPTZ DEFAULT now(),
        primary key (party_id, phone_type)
 );
 
 CREATE TABLE emails (
-       email_id uuid PRIMARY KEY default uuid_generate_v4(),
        party_id uuid NOT NULL,
-       email_type char(1) not null default 'p' check 
-            (email_type in ('w', 'b', 'p')),
+       email_type char(1) not null default 'p',
             -- work, business, personal
-       email VARCHAR(60) UNIQUE NOT NULL
+       email VARCHAR(60) UNIQUE NOT NULL,
+       created TIMESTAMPTZ DEFAULT now(),
+       modified TIMESTAMPTZ DEFAULT now(),
+       PRIMARY KEY (party_id, email_type),
+       CONSTRAINT email_type_from_list check 
+            (email_type in ('w', 'b', 'p'))
 );
 
 CREATE TABLE ingredients (
        ingredient_id uuid PRIMARY KEY default uuid_generate_v4(),
        ingredient_name VARCHAR(80) NOT NULL,
        manufacturer_id uuid NOT NULL,
-       manufacturer_type char(1) check (manufacturer_type in ('i', 'o')) NOT NULL,
+       io char(1) check (io in ('i', 'o')) NOT NULL,
        is_flour BOOLEAN NOT NULL,
-       FOREIGN KEY (manufacturer_id, manufacturer_type) references parties (party_id, party_type)
+       created TIMESTAMPTZ DEFAULT now(),
+       modified TIMESTAMPTZ DEFAULT now(),
+       FOREIGN KEY (manufacturer_id, io) references parties (party_id, party_type)
 );
+
+CREATE TABLE ingredient_costs (
+       ingredient_id uuid NOT NULL REFERENCES ingredients (ingredient_id),
+       maker_id uuid NOT NULL, 
+       mio CHAR(1) NOT NULL check (mio in ('i', 'o')),
+       seller_id uuid NOT NULL, 
+       sio CHAR(1) NOT NULL check (sio in ('i', 'o')),
+       cost money NOT NULL,
+       grams numeric NOT NULL,
+       created TIMESTAMPTZ DEFAULT now(),
+       modified TIMESTAMPTZ DEFAULT now(),
+       PRIMARY KEY (ingredient_id, maker_id, seller_id),
+       FOREIGN KEY (maker_id, mio) REFERENCES parties (party_id, party_type),
+       FOREIGN KEY (seller_id, sio) REFERENCES parties (party_id, party_type)
+);
+
 
 CREATE TABLE doughs (
        dough_id uuid PRIMARY KEY default uuid_generate_v4(),
@@ -123,6 +151,8 @@ CREATE TABLE dough_ingredients (
        percent_in_sour NUMERIC NOT NULL,
        percent_in_poolish NUMERIC (5, 2) NOT NULL,
        percent_in_soaker NUMERIC NOT NULL,
+       created TIMESTAMPTZ DEFAULT now(),
+       modified TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (dough_id, ingredient_id),
        CONSTRAINT bp_positive CHECK (bakers_percent > 0),
        CONSTRAINT percent_in_sour_positive CHECK (percent_in_sour >= 0),
@@ -142,6 +172,8 @@ CREATE TABLE dough_mods (
        percent_in_sour NUMERIC NOT NULL,
        percent_in_poolish NUMERIC (5, 2)NOT NULL,
        percent_in_soaker NUMERIC NOT NULL,
+       created TIMESTAMPTZ DEFAULT now(),
+       modified TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (mod_name, dough_id, ingredient_id),
        CONSTRAINT bp_positive CHECK (bakers_percent > 0),
        CONSTRAINT percent_in_sour_positive CHECK (percent_in_sour >= 0),
@@ -156,13 +188,14 @@ CREATE TABLE special_orders (
        special_order_id uuid PRIMARY KEY default uuid_generate_v4(),
        delivery_date DATE NOT NULL,
        customer_id uuid NOT NULL,
-       customer_type char(1) NOT NULL,
+       io char(1) NOT NULL,
        dough_id uuid NOT NULL REFERENCES doughs(dough_id),
        shape_id uuid NOT NULL REFERENCES shapes(shape_id),
        amt INTEGER NOT NULL,
-       modified_at TIMESTAMPTZ DEFAULT now(),
-       FOREIGN KEY (customer_id, customer_type) references parties (party_id, party_type),
-       CONSTRAINT customer_type_i_or_o CHECK (customer_type in ('i', 'o')),
+       created TIMESTAMPTZ DEFAULT now(),
+       modified TIMESTAMPTZ DEFAULT now(),
+       FOREIGN KEY (customer_id, io) references parties (party_id, party_type),
+       CONSTRAINT io_i_or_o CHECK (io in ('i', 'o')),
        CONSTRAINT delivery_date_present_or_future CHECK (delivery_date >= now()::date),
        CONSTRAINT delivery_date_in_next_6_mons CHECK (delivery_date < now()::date + interval '6 months'),
        CONSTRAINT amt_greater_than_0 CHECK (amt > 0)
@@ -179,16 +212,17 @@ CREATE TABLE days_of_week (
 CREATE TABLE standing_orders (
        day_of_week SMALLINT NOT NULL REFERENCES days_of_week(dow_id),
        customer_id uuid NOT NULL,
-       customer_type char(1),
+       io char(1),
        dough_id uuid NOT NULL REFERENCES doughs(dough_id),
        shape_id uuid NOT NULL REFERENCES shapes(shape_id),
        amt INTEGER NOT NULL,
-       modified_at TIMESTAMPTZ DEFAULT now(),
+       created TIMESTAMPTZ DEFAULT now(),
+       modified TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (day_of_week, customer_id, dough_id, shape_id),
-       FOREIGN KEY (customer_id, customer_type) 
+       FOREIGN KEY (customer_id, io) 
                     references parties (party_id, party_type),
        CONSTRAINT dow_in_1_thru_7 check (day_of_week IN (1, 2, 3, 4, 5, 6, 7)),
-       CONSTRAINT customer_type_i_or_o CHECK (customer_type in ('i', 'o')),
+       CONSTRAINT io_i_or_o CHECK (io in ('i', 'o')),
        CONSTRAINT amt_greater_than_0 CHECK (amt > 0)
 );
 
@@ -201,7 +235,8 @@ CREATE TABLE holds (
        start_date DATE NOT NULL,
        resume_date DATE,
        decrease_percent INTEGER NOT NULL,
-       modified_at TIMESTAMPTZ DEFAULT now(),
+       created TIMESTAMPTZ DEFAULT now(),
+       modified TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (day_of_week, customer_id, dough_id, shape_id, start_date),
        FOREIGN KEY (day_of_week, customer_id, dough_id, shape_id)
                REFERENCES standing_orders (day_of_week, customer_id, dough_id, shape_id),
@@ -220,7 +255,7 @@ SELECT i.ingredient_id, i.ingredient_name as ingredient,
        p.party_name as manufacturer
   FROM ingredients AS i
   JOIN parties as p ON i.manufacturer_id = p.party_id 
-       AND i.manufacturer_type = p.party_type;
+       AND i.io = p.party_type;
 
 CREATE OR REPLACE VIEW phone_book AS 
 WITH typology (party_id, phone_type_abbr, type) AS
@@ -332,7 +367,7 @@ SELECT d.dough_id, p.party_name AS customer, so.delivery_date,
   JOIN special_orders as so ON so.dough_id = dsw.dough_id
        AND s.shape_id = so.shape_id
   JOIN parties AS p on so.customer_id = p.party_id 
-       AND so.customer_type = p.party_type
+       AND so.io = p.party_type
  WHERE now()::date + d.lead_time_days = delivery_date;
 
 CREATE OR REPLACE VIEW todays_order_summary AS 
@@ -353,7 +388,7 @@ LEFT JOIN holds as h ON so.dough_id = h.dough_id AND so.shape_id = h.shape_id
 JOIN shapes AS s on so.shape_id = s.shape_id
 JOIN days_of_week as dw on so.day_of_week = dw.dow_id
 JOIN parties AS p on so.customer_id = p.party_id 
-     AND so.customer_type = p.party_type
+     AND so.io = p.party_type
 JOIN dough_shapes as ds on so.dough_id = ds.dough_id
      AND s.shape_id = ds.shape_id
 WHERE so.day_of_week = h.day_of_week
@@ -532,6 +567,45 @@ CREATE OR REPLACE FUNCTION phone_search(name_snippet VARCHAR)
        END;
 $$ LANGUAGE plpgsql;
 
+--function for triggers to update any column named 'modified'
+CREATE OR REPLACE FUNCTION update_modified_column() 
+RETURNS TRIGGER AS $$
+BEGIN
+        NEW.modified = now();
+            RETURN NEW; 
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER update_parties_modtime BEFORE UPDATE ON parties 
+   FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+
+CREATE TRIGGER update_people_modtime BEFORE UPDATE ON people_st
+   FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+
+CREATE TRIGGER update_phones_modtime BEFORE UPDATE ON phones
+   FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+
+CREATE TRIGGER update_ingredients_modtime BEFORE UPDATE ON ingredients
+   FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+
+CREATE TRIGGER update_ingredient_costs_modtime BEFORE UPDATE ON ingredient_costs
+   FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+
+CREATE TRIGGER update_d_ingredients_modtime BEFORE UPDATE ON dough_ingredients
+   FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+
+CREATE TRIGGER update_dough_mods_modtime BEFORE UPDATE ON dough_mods
+   FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+
+CREATE TRIGGER update_spec_orders_modtime BEFORE UPDATE ON special_orders
+   FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+
+CREATE TRIGGER update_holds_modtime BEFORE UPDATE ON holds
+   FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+
+CREATE TRIGGER update_stand_orders_modtime BEFORE UPDATE ON standing_orders
+   FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+
 --Insert data to test code
 
 INSERT INTO zip_codes (zip, city, state)
@@ -570,9 +644,9 @@ VALUES (pid('Blow'), 'm', '555-1212'),
 ;
 
 INSERT INTO people_st (party_id, first_name)
-VALUES ((SELECT party_id FROM parties WHERE party_name = 'Blow' AND now() - modified_at < interval '1 sec'), 'Joe'),
-       ((SELECT party_id FROM parties WHERE party_name = 'Bar' AND now() - modified_at < interval '1 sec'), 'Foo'),
-       ((SELECT party_id FROM parties WHERE party_name = 'Latte' AND now() - modified_at < interval '1 sec'), 'Moka-Choka')
+VALUES ((SELECT party_id FROM parties WHERE party_name = 'Blow' AND now() - modified < interval '1 sec'), 'Joe'),
+       ((SELECT party_id FROM parties WHERE party_name = 'Bar' AND now() - modified < interval '1 sec'), 'Foo'),
+       ((SELECT party_id FROM parties WHERE party_name = 'Latte' AND now() - modified < interval '1 sec'), 'Moka-Choka')
 ;
 
             --shapes
@@ -594,7 +668,7 @@ INSERT INTO doughs (dough_name, lead_time_days)
 ;
 
             --ingredients
-INSERT INTO ingredients (ingredient_name, manufacturer_id, manufacturer_type, is_flour)
+INSERT INTO ingredients (ingredient_name, manufacturer_id, io, is_flour)
      VALUES ('Bolted Red Fife Flour', pid('Meadowlark Organics'), 'o', TRUE),
             ('Kamut Flour', pid('Madison Sourdough'), 'o', TRUE),
             ('Rye Flour', pid('Madison Sourdough'), 'o', TRUE),
@@ -695,9 +769,16 @@ INSERT INTO dough_mods (mod_name, dough_id, ingredient_id, bakers_percent,
               ('cranberry', did('Kamut Sourdough'), iid('Sea Salt'), 2.0, 0, 0, 0)
 ;
 
+INSERT INTO ingredient_costs (
+       ingredient_id, maker_id, mio, seller_id, sio, cost, grams
+       ) VALUES
+       (iid('Kamut Flour'), pid('Madison Sourdough'), 'o',
+        pid('Madison Sourdough'), 'o', 5.20, 907)
+;
+
             --special_orders
-INSERT INTO special_orders (delivery_date, customer_id, customer_type, dough_id,
-            shape_id, amt, modified_at)
+INSERT INTO special_orders (delivery_date, customer_id, io, dough_id,
+            shape_id, amt, modified)
        VALUES 
         --kamut
             ((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', did('Kamut Sourdough'), 
@@ -739,8 +820,8 @@ INSERT INTO days_of_week (dow_id, dow_names)
             (7, 'Sun')
 ;
 
-INSERT INTO standing_orders (day_of_week, customer_id, customer_type, dough_id,
-            shape_id, amt, modified_at)
+INSERT INTO standing_orders (day_of_week, customer_id, io, dough_id,
+            shape_id, amt, modified)
        VALUES 
             --kamut
             (1, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 2, (SELECT now())),
