@@ -19,6 +19,25 @@ CREATE TABLE parties (
        PRIMARY KEY (party_id, party_type)
 );
 
+
+INSERT INTO parties (party_type, party_name)
+VALUES ('i', 'Blow'),
+       ('i', 'Bar'),
+       ('o', 'Madison Sourdough'),
+       ('o', 'Meadowlark Organics'),
+       ('o', 'Woodmans'),
+       ('o', 'Willy St Coop'),
+       ('o', 'King Arthur'),
+       ('o', 'Redmond'),
+       ('o', 'LeSaffre'),
+       ('o', 'Siggis'),
+       ('o', 'New Glarus Brewery'),
+       ('o', 'Eden'),
+       ('o', 'Dept of Revenue'),
+       ('o', 'Westside Farmers Market'),
+       ('i', 'Latte')
+;
+
 -- For "persons", a subtype of parties
 CREATE TABLE people_st (
        party_id uuid PRIMARY KEY,
@@ -614,24 +633,6 @@ VALUES (53705, 'Madison', 'WI'),
        (53562, 'Middleton', 'WI')
 ;
 
-INSERT INTO parties (party_type, party_name)
-VALUES ('i', 'Blow'),
-       ('i', 'Bar'),
-       ('o', 'Madison Sourdough'),
-       ('o', 'Meadowlark Organics'),
-       ('o', 'Woodmans'),
-       ('o', 'Willy St Coop'),
-       ('o', 'King Arthur'),
-       ('o', 'Redmond'),
-       ('o', 'LeSaffre'),
-       ('o', 'Siggis'),
-       ('o', 'New Glarus Brewery'),
-       ('o', 'Eden'),
-       ('o', 'Dept of Revenue'),
-       ('o', 'Westside Farmers Market'),
-       ('i', 'Latte')
-;
-
 INSERT INTO phones (party_id, phone_type, phone_no)
 VALUES (pid('Blow'), 'm', '555-1212'),
        (pid('Blow'), 'w', '608-555-0000'),
@@ -856,4 +857,12 @@ INSERT INTO holds (day_of_week, customer_id, dough_id, shape_id, start_date, res
             (7, pid('Blow'), did('Kamut Sourdough'), sid('12" Boule'), 
             (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50)
 ;
+
+UPDATE parties
+SET party_name = 'Dept of Shenanigans'
+WHERE party_name Like 'Dept%';
+
+SELECT party_id, party_name, created, modified, modified - created AS time_diff
+FROM parties
+WHERE party_name Like 'Dept%';
 
