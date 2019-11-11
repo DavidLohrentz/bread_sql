@@ -9,6 +9,7 @@ CREATE DATABASE bread;
 SET timezone = 'US/Central';
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE TABLE parties (
        party_id uuid default uuid_generate_v4(),
@@ -18,6 +19,9 @@ CREATE TABLE parties (
        modified TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (party_id, party_type)
 );
+
+CREATE INDEX parties_party_name_trgm_idx ON parties 
+ USING GIN (party_name gin_trgm_ops);
 
 
 INSERT INTO parties (party_type, party_name)
@@ -121,6 +125,9 @@ CREATE TABLE ingredients (
        modified TIMESTAMPTZ DEFAULT now()
 );
 
+CREATE INDEX ingredients_ingredient_name_trgm_idx ON ingredients 
+ USING GIN (ingredient_name gin_trgm_ops);
+
 CREATE TABLE ingredient_costs (
        ingredient_id uuid NOT NULL REFERENCES ingredients (ingredient_id),
        maker_id uuid NOT NULL, 
@@ -200,6 +207,10 @@ CREATE TABLE doughs (
        CONSTRAINT lead_time_less_than_8 CHECK (lead_time_days < 8)
 );
 
+CREATE INDEX doughs_dough_name_trgm_idx ON doughs 
+ USING GIN (dough_name gin_trgm_ops);
+
+
 CREATE TABLE shapes (
        shape_id uuid PRIMARY KEY default uuid_generate_v4(),
        shape_name VARCHAR(70) UNIQUE NOT NULL
@@ -256,7 +267,6 @@ CREATE TABLE dough_mods (
 );
 
 CREATE TABLE special_orders (
-       special_order_id uuid PRIMARY KEY default uuid_generate_v4(),
        delivery_date DATE NOT NULL,
        customer_id uuid NOT NULL,
        io char(1) NOT NULL,
@@ -265,6 +275,7 @@ CREATE TABLE special_orders (
        amt INTEGER NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
+       PRIMARY KEY (delivery_date, customer_id, dough_id, shape_id, created),
        FOREIGN KEY (customer_id, io) references parties (party_id, party_type),
        CONSTRAINT io_i_or_o CHECK (io in ('i', 'o')),
        CONSTRAINT delivery_date_present_or_future CHECK (delivery_date >= now()::date),
@@ -519,10 +530,10 @@ get_batch_weight(which_dough VARCHAR)
 RETURNS numeric AS
 'SELECT (SELECT COALESCE (sum(amt * grams), 0)
    FROM todays_orders
-  WHERE dough_name ILIKE which_dough) +
+  WHERE LOWER(dough_name) LIKE LOWER(which_dough)) +
   (SELECT COALESCE (sum(amt * grams), 0)
      FROM standing_minus_holds
-   WHERE dough_name ILIKE which_dough)
+   WHERE LOWER(dough_name) LIKE LOWER(which_dough))
 ;'
 LANGUAGE SQL
 IMMUTABLE
@@ -564,10 +575,15 @@ SELECT i.ingredient_id, i.ingredient_name, ROUND(ic.cost, 2) AS cost, ic.grams,
   JOIN ingredients as i on ic.ingredient_id = i.ingredient_id;
 
 
+CREATE OR REPLACE VIEW total_bp AS
+SELECT DISTINCT dough_name, sum(bakers_percent) OVER 
+       (partition by dough_name) AS total_bp
+  FROM dough_info;
+
 CREATE OR REPLACE FUNCTION bak_per(which_doe VARCHAR)
   returns numeric AS
-          'SELECT sum(bakers_percent) OVER (PARTITION BY dough_id)
-          FROM dough_info WHERE dough_name ILIKE which_doe;'
+          'SELECT DISTINCT sum(bakers_percent) OVER (PARTITION BY dough_id)
+          FROM dough_info WHERE LOWER(dough_name) LIKE LOWER(which_doe);'
  LANGUAGE SQL
 IMMUTABLE
   RETURNS NULL ON NULL INPUT;
@@ -576,7 +592,7 @@ IMMUTABLE
 CREATE OR REPLACE FUNCTION pid(p_name VARCHAR)
   returns uuid AS
           'SELECT party_id FROM parties
-          WHERE party_name ILIKE p_name;'
+          WHERE LOWER(party_name) LIKE LOWER(p_name);'
  LANGUAGE SQL
 IMMUTABLE
   RETURNS NULL ON NULL INPUT;
@@ -585,7 +601,7 @@ IMMUTABLE
 CREATE OR REPLACE FUNCTION did(d_name VARCHAR)
   returns uuid AS
           'SELECT dough_id FROM doughs
-          WHERE dough_name ILIKE d_name;'
+          WHERE LOWER(dough_name) LIKE LOWER(d_name);'
  LANGUAGE SQL
 IMMUTABLE
   RETURNS NULL ON NULL INPUT;
@@ -594,7 +610,7 @@ IMMUTABLE
 CREATE OR REPLACE FUNCTION iid(i_name VARCHAR)
   returns uuid AS
           'SELECT ingredient_id FROM ingredients
-          WHERE ingredient_name ILIKE i_name;'
+          WHERE LOWER(ingredient_name) LIKE LOWER(i_name);'
  LANGUAGE SQL
 IMMUTABLE
   RETURNS NULL ON NULL INPUT;
@@ -603,7 +619,7 @@ IMMUTABLE
 CREATE OR REPLACE FUNCTION sid(s_name VARCHAR)
   returns uuid AS
           'SELECT shape_id FROM shapes
-          WHERE shape_name ILIKE s_name;'
+          WHERE LOWER(shape_name) LIKE LOWER(s_name);'
  LANGUAGE SQL
 IMMUTABLE
   RETURNS NULL ON NULL INPUT;
@@ -616,23 +632,23 @@ CREATE OR REPLACE FUNCTION bak_per2(which_doe VARCHAR, mod VARCHAR)
           'SELECT (SELECT SUM(dm.bakers_percent) 
            FROM dough_mods AS dm
            JOIN doughs AS d on dm.dough_id = d.dough_id
-           WHERE d.dough_name ILIKE which_doe) +
+           WHERE LOWER(d.dough_name) LIKE LOWER(which_doe)) +
            (SELECT SUM(di.bakers_percent)
            FROM dough_ingredients AS di
            JOIN doughs as d on di.dough_id = d.dough_id
-           WHERE d.dough_name ILIKE which_doe
+           WHERE LOWER(d.dough_name) LIKE LOWER(which_doe)
            AND di.ingredient_id NOT IN (SELECT ingredient_id 
            FROM dough_mods AS dm
            JOIN doughs AS d on dm.dough_id = d.dough_id
-           WHERE d.dough_name ILIKE which_doe 
-           AND mod_name LIKE mod));'
+           WHERE LOWER(d.dough_name) LIKE LOWER(which_doe) 
+           AND LOWER(mod_name) LIKE LOWER(mod)));'
 
 LANGUAGE SQL
 IMMUTABLE
   RETURNS NULL ON NULL INPUT;
 
 
---usage: SELECT "%", ingredient, overall, sour, poolish, soaker, final FROM formula(1);
+--usage: SELECT "%", ingredient, overall, sour, poolish, soaker, final FROM formula('kam%');
 CREATE OR REPLACE FUNCTION formula(my_dough VARCHAR)
        RETURNS TABLE (dough character varying, "%" numeric, ingredient character varying,
        overall numeric, sour numeric, poolish numeric, soaker numeric, final numeric) AS $$
@@ -651,7 +667,7 @@ CREATE OR REPLACE FUNCTION formula(my_dough VARCHAR)
                           bak_per(my_dough) * (1- (din.percent_in_sour + 
                           din.percent_in_poolish + din.percent_in_soaker)/100), 0)
                     FROM dough_info AS din
-                    WHERE din.dough_name LIKE my_dough;
+                    WHERE LOWER(din.dough_name) LIKE LOWER(my_dough);
       END;
 $$ LANGUAGE plpgsql;
 
@@ -670,14 +686,14 @@ CREATE OR REPLACE FUNCTION modded_formula(get_dough VARCHAR, get_mod VARCHAR)
 FROM dough_mods as dm 
 JOIN ingredients as i on dm.ingredient_id = i.ingredient_id
 JOIN doughs as d on dm.dough_id = d.dough_id
-     WHERE dm.mod_name LIKE get_mod AND d.dough_name ILIKE get_dough
+     WHERE LOWER(dm.mod_name) LIKE LOWER(get_mod) AND LOWER(d.dough_name) LIKE LOWER(get_dough)
      UNION ALL
 SELECT d.dough_name, di.dough_id, di.ingredient_id, i.ingredient_name, i.is_flour, di.bakers_percent, 
              di.percent_in_sour, di.percent_in_poolish, di.percent_in_soaker
 FROM dough_ingredients as di 
 JOIN ingredients as i on di.ingredient_id = i.ingredient_id
 JOIN doughs as d on di.dough_id = d.dough_id
-WHERE d.dough_name ILIKE get_dough
+WHERE LOWER(d.dough_name) LIKE LOWER(get_dough)
 AND di.ingredient_id NOT IN (SELECT ingredient_id FROM dough_mods)
 ORDER BY is_flour DESC, bakers_percent DESC)
 
@@ -694,14 +710,14 @@ ORDER BY is_flour DESC, bakers_percent DESC)
                           bak_per2(get_dough, get_mod) * (1- (percent_in_sour + 
                           percent_in_poolish + percent_in_soaker)/100), 0)
                     FROM dmu
-                    WHERE dough_name LIKE get_dough
+                    WHERE LOWER(dough_name) LIKE LOWER(get_dough)
                     ;
       END;
 $$ LANGUAGE plpgsql;
 
 
 --usage: SELECT "%", ingredient, overall, sour, poolish, soaker, final FROM formula('cran%');
-CREATE OR REPLACE FUNCTION form(my_dough VARCHAR)
+CREATE OR REPLACE FUNCTION cost_form(my_dough VARCHAR)
        RETURNS TABLE (dough character varying, ingredient character varying,
        grams NUMERIC, cost numeric) AS $$
        BEGIN
@@ -721,7 +737,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION cost_per_kg(which_do VARCHAR)
   returns numeric AS
           'SELECT round(SUM(cost) / (SUM(grams) / 1000), 2) 
-          FROM form(which_do);'
+          FROM cost_form(which_do);'
  LANGUAGE SQL
 IMMUTABLE
   RETURNS NULL ON NULL INPUT;
@@ -734,7 +750,7 @@ CREATE OR REPLACE FUNCTION phone_search(name_snippet VARCHAR)
               RETURN QUERY
                  SELECT pb.name, pb.type, pb.phone_no
                  FROM phone_book AS pb
-                 WHERE pb.name ILIKE name_snippet;
+                 WHERE LOWER(pb.name) LIKE LOWER(name_snippet);
        END;
 $$ LANGUAGE plpgsql;
 
@@ -966,7 +982,7 @@ INSERT INTO special_orders (delivery_date, customer_id, io, dough_id,
                 sid('7" pita'), 8, (SELECT now())),
 
         --pita bread
-            ((SELECT now()::date + interval '1 day'), pid('Blow'), 'i', did('pita bread'), 
+            ((SELECT now()::date + interval '1 day'), pid('Bar'), 'i', did('pita bread'), 
                 sid('7" pita'), 4, (SELECT now())),
         
         --rugbrod
