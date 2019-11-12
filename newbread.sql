@@ -20,6 +20,7 @@ CREATE TABLE parties (
        PRIMARY KEY (party_id, party_type)
 );
 
+--CREATE INDEX parties_idx On parties (party_name);
 CREATE INDEX parties_party_name_trgm_idx ON parties 
  USING GIN (party_name gin_trgm_ops);
 
@@ -127,7 +128,8 @@ CREATE TABLE ingredients (
 );
 
 CREATE INDEX ingredients_ingredient_name_trgm_idx ON ingredients
-  USING GIN (ingredient_name gin_trgm_ops);
+ USING GIN (ingredient_name gin_trgm_ops);
+--CREATE INDEX ingredients_idx On ingredients (ingredient_name);
 
 CREATE TABLE ingredient_costs (
        ingredient_id uuid NOT NULL REFERENCES ingredients (ingredient_id),
@@ -155,7 +157,7 @@ CREATE TABLE cost_changes (
        new_cost numeric(10,5) NOT NULL,
        grams numeric NOT NULL,
        change_time TIMESTAMPTZ DEFAULT now(),
-       PRIMARY KEY (ingredient_id, maker_id, seller_id),
+       PRIMARY KEY (ingredient_id, maker_id, seller_id, change_time),
        FOREIGN KEY (maker_id, mio) REFERENCES parties (party_id, party_type),
        FOREIGN KEY (seller_id, sio) REFERENCES parties (party_id, party_type)
 );
@@ -1057,3 +1059,24 @@ WHERE party_name Like 'Dept%';
 UPDATE ingredient_costs
    SET cost = 5.00
  WHERE ingredient_id = iid('Kamut Flour')
+
+-- Ran five tests with 2 indexes + no index on 
+-- party_name and ingredient_name
+--
+--           test_name        | which_index | median 
+--    ------------------------+-------------+--------
+--     ingredient_name_join   | trgm        |  0.245
+--     ingredient_name_join   | b-tree      |  0.412
+--     ingredient_name_join   | none        |  0.464
+--     insert_ingredients     | none        | 20.107
+--     insert_ingredients     | b-tree      | 26.035
+--     insert_ingredients     | trgm        | 34.551
+--     insert_parties         | none        |  21.08
+--     insert_parties         | b-tree      | 27.128
+--     insert_parties         | trgm        |  29.44
+--     party_name_equal       | b-tree      |  0.047
+--     party_name_equal       | trgm        |  0.053
+--     party_name_equal       | none        |  0.057
+--     update_ingredient_cost | trgm        |   0.17
+--     update_ingredient_cost | b-tree      |  0.504
+--     update_ingredient_cost | none        |  0.884
