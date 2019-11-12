@@ -23,7 +23,6 @@ CREATE TABLE parties (
 CREATE INDEX parties_party_name_trgm_idx ON parties 
  USING GIN (party_name gin_trgm_ops);
 
-
 INSERT INTO parties (party_type, party_name)
 VALUES ('i', 'Blow'),
        ('i', 'Bar'),
@@ -45,11 +44,12 @@ VALUES ('i', 'Blow'),
 -- For "persons", a subtype of parties
 CREATE TABLE people_st (
        party_id uuid PRIMARY KEY,
-       party_type CHAR(1) default 'i' check (party_type = 'i') NOT NULL,
+       party_type CHAR(1) default 'i' NOT NULL,
        first_name VARCHAR(25) NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
-       FOREIGN KEY (party_id, party_type) references parties (party_id, party_type))
+       FOREIGN KEY (party_id, party_type) references parties (party_id, party_type),
+       CONSTRAINT party_type_is_i check (party_type = 'i')) 
 ;
 
 CREATE TABLE zip_codes (
@@ -61,7 +61,7 @@ CREATE TABLE zip_codes (
 -- For "staff, a subtype of people
 CREATE TABLE staff_st (
        party_id uuid PRIMARY KEY,
-       party_type CHAR(1) default 'i' check (party_type = 'i') NOT NULL,
+       party_type CHAR(1) default 'i' NOT NULL,
        ssn CHAR(11) NOT NULL,
        hire_date DATE NOT NULL,
        is_active BOOLEAN NOT NULL,
@@ -73,7 +73,8 @@ CREATE TABLE staff_st (
        FOREIGN KEY (party_id, party_type) references parties (party_id, party_type),
        FOREIGN KEY (party_id) references people_st (party_id),
        CONSTRAINT hire_date_after_1970 CHECK (hire_date > '1970-01-01'),
-       CONSTRAINT hire_date_within_next_mon CHECK (hire_date < now()::date + interval '1 month')
+       CONSTRAINT hire_date_within_next_mon CHECK (hire_date < now()::date + interval '1 month'),
+       CONSTRAINT party_type_is_i check (party_type = 'i') 
 );
 
 -- For "organizations", a subtype of parties
@@ -88,9 +89,9 @@ CREATE TABLE organization_st (
 ;
 
 CREATE TABLE ein_numbs (
-       party_id uuid PRIMARY KEY,
+       ein VARCHAR(12) NOT NULL PRIMARY KEY,
+       party_id uuid,
        party_type CHAR(1) default 'o' check (party_type = 'o') NOT NULL,
-       ein CHAR(11) UNIQUE NOT NULL,
        FOREIGN KEY (party_id, party_type) references parties (party_id, party_type))
 ;
 
@@ -125,8 +126,8 @@ CREATE TABLE ingredients (
        modified TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX ingredients_ingredient_name_trgm_idx ON ingredients 
- USING GIN (ingredient_name gin_trgm_ops);
+CREATE INDEX ingredients_ingredient_name_trgm_idx ON ingredients
+  USING GIN (ingredient_name gin_trgm_ops);
 
 CREATE TABLE ingredient_costs (
        ingredient_id uuid NOT NULL REFERENCES ingredients (ingredient_id),
@@ -207,9 +208,6 @@ CREATE TABLE doughs (
        CONSTRAINT lead_time_less_than_8 CHECK (lead_time_days < 8)
 );
 
-CREATE INDEX doughs_dough_name_trgm_idx ON doughs 
- USING GIN (dough_name gin_trgm_ops);
-
 
 CREATE TABLE shapes (
        shape_id uuid PRIMARY KEY default uuid_generate_v4(),
@@ -285,7 +283,7 @@ CREATE TABLE special_orders (
 
 CREATE TABLE days_of_week (
        dow_id SMALLINT PRIMARY KEY,
-       dow_names CHAR(3) NOT NULL,
+       dow_names CHAR(3) UNIQUE NOT NULL,
        CONSTRAINT dow_id_between_0_and_7 check (dow_id > 0 AND dow_id <= 7),
        CONSTRAINT dow_names_3_letter_abr check (dow_names in ('Mon', 'Tue',
                  'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
@@ -367,7 +365,7 @@ CREATE TABLE holds (
        shape_id uuid NOT NULL REFERENCES shapes(shape_id),
        start_date DATE NOT NULL,
        resume_date DATE,
-       decrease_percent INTEGER NOT NULL,
+       decrease_percent numeric(4,1) NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (day_of_week, customer_id, dough_id, shape_id, start_date),
@@ -729,7 +727,7 @@ CREATE OR REPLACE FUNCTION cost_form(my_dough VARCHAR)
                           bak_per(my_dough), 0) * cl.cost_per_g AS item_cost
                     FROM dough_info AS din
                     JOIN cost_list as cl on din.ingredient = cl.ingredient_name
-                    WHERE din.dough_name LIKE my_dough;
+                    WHERE LOWER(din.dough_name) LIKE LOWER(my_dough);
       END;
 $$ LANGUAGE plpgsql;
 
@@ -737,7 +735,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION cost_per_kg(which_do VARCHAR)
   returns numeric AS
           'SELECT round(SUM(cost) / (SUM(grams) / 1000), 2) 
-          FROM cost_form(which_do);'
+          FROM cost_form(LOWER(which_do));'
  LANGUAGE SQL
 IMMUTABLE
   RETURNS NULL ON NULL INPUT;
