@@ -33,6 +33,48 @@ def another_one():
     else:
         exit(0)
 
+def get_pid(party_name):
+    connection = psycopg2.connect(user= os.environ['PGUSER'],
+                                  password = os.environ['PGPASSWD'],
+                                  host= os.environ['PGHOST'],
+                                  port="5432",
+                                  database= os.environ['PGDATABASE'])
+
+    cursor = connection.cursor()
+    cursor.callproc('pid', [party_name])
+    result = cursor.fetchone()
+    cursor.close()
+    return result[0]
+
+
+def get_sid(shape_name):
+    connection = psycopg2.connect(user= os.environ['PGUSER'],
+                                  password = os.environ['PGPASSWD'],
+                                  host= os.environ['PGHOST'],
+                                  port="5432",
+                                  database= os.environ['PGDATABASE'])
+
+    cursor = connection.cursor()
+    cursor.callproc('sid', [shape_name])
+    result = cursor.fetchone()
+    cursor.close()
+    return result[0]
+
+
+def get_did(dough_name):
+    connection = psycopg2.connect(user= os.environ['PGUSER'],
+                                  password = os.environ['PGPASSWD'],
+                                  host= os.environ['PGHOST'],
+                                  port="5432",
+                                  database= os.environ['PGDATABASE'])
+
+    cursor = connection.cursor()
+    cursor.callproc('did', [dough_name])
+    result = cursor.fetchone()
+    cursor.close()
+    return result[0]
+
+
 def dough():
     which_dough = input("name of dough: \n")
     leader = int(input(f"Days of lead time for {which_dough}? \n"))
@@ -41,31 +83,34 @@ def dough():
     insert_data(SQL, data)
 
 def email():
-    party_name = input("what is the party_id: ")
-    email_type = input("""What is the email type:
+    party_name = input("what is the name of the party: ")
+    pid = get_pid(party_name)
+    email_type = ''
+    while email_type != 'b' and email_type != 'w' and email_type != 'p':
+        email_type = input("""What is the email type:
         b) business
         w) work
         p) personal\n""")
+        email_type = email_type.lower()
     email = input("what is the email address: ")
     SQL = "INSERT INTO emails (party_id, email_type, email) VALUES (%s, %s, %s)"
-    data = (party_name, email_type, email)
+    data = (pid, email_type, email)
     insert_data(SQL, data)
 
 def party():
     party_name = input("what is the name of the party: ")
-    party_type = input(f"Is {party_name} an individual (i) or and organization (o)? ")
+    party_type = ''
+    while party_type != 'i' and party_type != 'o':
+        party_type = input(f"Is {party_name} an individual (i) or an organization (o)? ")
     SQL = "INSERT INTO parties (party_name, party_type) VALUES (%s, %s)"
     data = (party_name, party_type)
     insert_data(SQL, data)
 
 def ingredient():
     ingredient_name = input("What is the name of the ingredient?\n")
-    manuf_name = input("What is the party_id of the manufacturer?\n")
-    manuf_type = input("Is the manufacturer an individual 'i' or organization 'o'?\n")
     is_flour = input(f"{ingredient_name} is flour: 't' = true, 'f' = false\n")
-    SQL = """INSERT INTO ingredients (ingredient_name, manufacturer_id,
-             manufacturer_type, is_flour) VALUES (%s, %s, %s, %s)"""
-    data = (ingredient_name, manuf_name, manuf_type, is_flour)
+    SQL = "INSERT INTO ingredients (ingredient_name, is_flour) VALUES (%s, %s)"
+    data = (ingredient_name, is_flour)
     insert_data(SQL, data)
 
 def shape():
@@ -76,14 +121,21 @@ def shape():
 
 def spec_ord():
     delivery = input("What is the delivery date?\n")
-    cid = input("What is the party_id of the customer?\n")
-    cust_type = input("Is the customer an individual 'i' or organization 'o'?\n")
-    doe = input("What is the dough_id?\n")
-    sh = input("What is the shape_id?\n")
-    amt = input("What is the amount?\n")
-    SQL = """INSERT INTO special_orders (delivery_date, customer_id, customer_type,
+    cust_name = ''
+    while cust_name == '':
+        cust_name = input("What is the name of the customer?\n")
+    cid = get_pid(cust_name)
+    cust_type = ''
+    while cust_type != 'i' and cust_type != 'o':
+        cust_type = input("Is the customer an individual 'i' or an organization 'o'?\n")
+    doe = input("What is the name of the dough?\n")
+    did = get_did(doe)
+    shape = input("What is the name of the shape?\n")
+    sid = get_sid(shape)
+    amt = int(input(f"What is the amount of {doe} shaped as {shape}\n"))
+    SQL = """INSERT INTO special_orders (delivery_date, customer_id, io,
              dough_id, shape_id, amt) VALUES (%s, %s, %s, %s, %s, %s)"""
-    data = (delivery, cid, cust_type, doe, sh, amt)
+    data = (delivery, cid, cust_type, did, sid, amt)
     insert_data(SQL, data)
 
 def pick_it():
