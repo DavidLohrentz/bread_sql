@@ -733,6 +733,16 @@ CREATE OR REPLACE FUNCTION cost_form(my_dough VARCHAR)
       END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION test()
+       RETURNS TABLE (shape character varying) AS $$
+       BEGIN
+            RETURN QUERY
+                   SELECT shape_name
+                   FROM shapes;
+       END;
+$$ LANGUAGE plpgsql;
+
+
 -- usage: SELECT cost_per_kg('cran%');
 CREATE OR REPLACE FUNCTION cost_per_kg(which_do VARCHAR)
   returns numeric AS
