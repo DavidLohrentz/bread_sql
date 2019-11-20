@@ -161,7 +161,8 @@ CREATE TABLE cost_changes (
        sio text NOT NULL check (sio in ('i', 'o')),
        old_cost numeric(10,5) NOT NULL,
        new_cost numeric(10,5) NOT NULL,
-       grams numeric NOT NULL,
+       old_grams numeric NOT NULL,
+       new_grams numeric NOT NULL,
        change_time TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (ingredient_id, maker_id, seller_id, change_time),
        FOREIGN KEY (maker_id, mio) REFERENCES parties (party_id, party_type),
@@ -173,7 +174,7 @@ CREATE OR REPLACE FUNCTION record_if_cost_changed()
        RETURNS trigger AS
     $$
     BEGIN
-          IF NEW.cost <> OLD.cost THEN
+          IF NEW.cost <> OLD.cost OR NEW.grams <> OLD.grams THEN
             INSERT INTO cost_changes (
             ingredient_id,
             maker_id,
@@ -182,7 +183,8 @@ CREATE OR REPLACE FUNCTION record_if_cost_changed()
             sio,
             old_cost,
             new_cost,
-            grams,
+            old_grams,
+            new_grams,
             change_time)
         VALUES (
             OLD.ingredient_id,
@@ -193,6 +195,7 @@ CREATE OR REPLACE FUNCTION record_if_cost_changed()
             OLD.cost,
             NEW.cost,
             OLD.grams,
+            NEW.grams,
             now()
         );
         END IF;
@@ -377,7 +380,8 @@ CREATE TABLE standing_orders (
 
 
 CREATE TABLE standing_changes (
-       day_of_week SMALLINT NOT NULL REFERENCES days_of_week(dow_id),
+       old_day_of_week SMALLINT NOT NULL REFERENCES days_of_week(dow_id),
+       new_day_of_week SMALLINT NOT NULL REFERENCES days_of_week(dow_id),
        customer_id uuid NOT NULL,
        io text NOT NULL,
        dough_id uuid NOT NULL REFERENCES doughs(dough_id),
@@ -385,10 +389,10 @@ CREATE TABLE standing_changes (
        old_amt INTEGER NOT NULL,
        new_amt INTEGER NOT NULL,
        change_time TIMESTAMPTZ DEFAULT now(),
-       PRIMARY KEY (day_of_week, customer_id, dough_id, shape_id, change_time),
+       PRIMARY KEY (new_day_of_week, customer_id, dough_id, shape_id, change_time),
        FOREIGN KEY (customer_id, io) 
                     references parties (party_id, party_type),
-       CONSTRAINT dow_in_1_thru_7 check (day_of_week IN (1, 2, 3, 4, 5, 6, 7)),
+       CONSTRAINT dow_in_1_thru_7 check (new_day_of_week IN (1, 2, 3, 4, 5, 6, 7)),
        CONSTRAINT io_i_or_o CHECK (io in ('i', 'o'))
 );
 
@@ -396,9 +400,10 @@ CREATE OR REPLACE FUNCTION record_if_amt_changed()
        RETURNS trigger AS
     $$
     BEGIN
-          IF NEW.amt <> OLD.amt THEN
+          IF NEW.amt <> OLD.amt OR NEW.day_of_week <> OLD.day_of_week THEN
             INSERT INTO standing_changes (
-            day_of_week,
+            old_day_of_week,
+            new_day_of_week,
             customer_id,
             io,
             dough_id,
@@ -408,6 +413,7 @@ CREATE OR REPLACE FUNCTION record_if_amt_changed()
             change_time)
         VALUES (
             OLD.day_of_week,
+            NEW.day_of_week,
             OLD.customer_id,
             OLD.io,
             OLD.dough_id,
