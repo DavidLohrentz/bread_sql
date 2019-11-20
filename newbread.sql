@@ -13,11 +13,13 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE TABLE parties (
        party_id uuid default uuid_generate_v4(),
-       party_type char(1) check (party_type in ('i', 'o')) NOT NULL,
+       party_type text NOT NULL,
        party_name VARCHAR(80) NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
-       PRIMARY KEY (party_id, party_type)
+       PRIMARY KEY (party_id, party_type),
+       CONSTRAINT type_length_1 CHECK (length(party_type)=1),
+       CONSTRAINT party_type_i_or_o CHECK (party_type in ('i', 'o'))
 );
 
 --CREATE INDEX parties_idx On parties (party_name);
@@ -45,8 +47,8 @@ VALUES ('i', 'Blow'),
 -- For "persons", a subtype of parties
 CREATE TABLE people_st (
        party_id uuid PRIMARY KEY,
-       party_type CHAR(1) default 'i' NOT NULL,
-       first_name VARCHAR(25) NOT NULL,
+       party_type text default 'i' NOT NULL,
+       first_name VARCHAR NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
        FOREIGN KEY (party_id, party_type) references parties (party_id, party_type),
@@ -54,35 +56,39 @@ CREATE TABLE people_st (
 ;
 
 CREATE TABLE zip_codes (
-       zip CHAR(5) PRIMARY KEY,
-       city VARCHAR(70) NOT NULL,
-       state CHAR(2) NOT NULL
+       zip text PRIMARY KEY,
+       city VARCHAR NOT NULL,
+       state text NOT NULL,
+       CONSTRAINT zip_length_5 CHECK (length(zip)=5),
+       CONSTRAINT st_length_2 CHECK (length(state)=2)
 );
 
 -- For "staff, a subtype of people
 CREATE TABLE staff_st (
        party_id uuid PRIMARY KEY,
-       party_type CHAR(1) default 'i' NOT NULL,
-       ssn CHAR(11) NOT NULL,
+       party_type text default 'i' NOT NULL,
+       ssn text NOT NULL,
        hire_date DATE NOT NULL,
        is_active BOOLEAN NOT NULL,
-       street_no VARCHAR(12) NOT NULL,
-       street VARCHAR(30) NOT NULL,
-       zip CHAR(5) NOT NULL REFERENCES zip_codes(zip),
+       street_no VARCHAR NOT NULL,
+       street VARCHAR NOT NULL,
+       zip text NOT NULL REFERENCES zip_codes(zip),
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
        FOREIGN KEY (party_id, party_type) references parties (party_id, party_type),
        FOREIGN KEY (party_id) references people_st (party_id),
        CONSTRAINT hire_date_after_1970 CHECK (hire_date > '1970-01-01'),
        CONSTRAINT hire_date_within_next_mon CHECK (hire_date < now()::date + interval '1 month'),
+       CONSTRAINT ssn_length_11 CHECK (length(ssn)<=11),
+       CONSTRAINT zip_length_5 CHECK (length(zip)=5),
        CONSTRAINT party_type_is_i check (party_type = 'i') 
 );
 
 -- For "organizations", a subtype of parties
 CREATE TABLE organization_st (
        party_id uuid PRIMARY KEY,
-       party_type CHAR(1) default 'o' check (party_type = 'o') NOT NULL,
-       org_type CHAR(1) NOT NULL,
+       party_type text default 'o' check (party_type = 'o') NOT NULL,
+       org_type text NOT NULL,
        CONSTRAINT check_org_in_list CHECK 
             (org_type in('b', 'c', 'n', 'g')),
             -- b = Business, c = coop, n = Nonprofit, g = Gov't
@@ -90,18 +96,18 @@ CREATE TABLE organization_st (
 ;
 
 CREATE TABLE ein_numbs (
-       ein VARCHAR(12) NOT NULL PRIMARY KEY,
+       ein VARCHAR NOT NULL PRIMARY KEY,
        party_id uuid,
-       party_type CHAR(1) default 'o' check (party_type = 'o') NOT NULL,
+       party_type text default 'o' check (party_type = 'o') NOT NULL,
        FOREIGN KEY (party_id, party_type) references parties (party_id, party_type))
 ;
 
 CREATE TABLE phones (
        party_id uuid,
-       phone_type char(1) not null default 'm' check 
+       phone_type text not null default 'm' check 
             (phone_type in ('w', 'h', 'f', 'b', 'm', 'e')),
             -- work, home, fax, business, mobile, emergency
-       phone_no VARCHAR(25) UNIQUE NOT NULL,
+       phone_no VARCHAR UNIQUE NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
        primary key (party_id, phone_type)
@@ -109,9 +115,9 @@ CREATE TABLE phones (
 
 CREATE TABLE emails (
        party_id uuid NOT NULL,
-       email_type char(1) not null default 'p',
+       email_type text not null default 'p',
             -- work, business, personal
-       email VARCHAR(60) UNIQUE NOT NULL,
+       email VARCHAR UNIQUE NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (party_id, email_type),
@@ -121,7 +127,7 @@ CREATE TABLE emails (
 
 CREATE TABLE ingredients (
        ingredient_id uuid PRIMARY KEY default uuid_generate_v4(),
-       ingredient_name VARCHAR(80) NOT NULL,
+       ingredient_name VARCHAR NOT NULL,
        is_flour BOOLEAN NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now()
@@ -134,9 +140,9 @@ CREATE INDEX ingredients_ingredient_name_trgm_idx ON ingredients
 CREATE TABLE ingredient_costs (
        ingredient_id uuid NOT NULL REFERENCES ingredients (ingredient_id),
        maker_id uuid NOT NULL, 
-       mio CHAR(1) NOT NULL check (mio in ('i', 'o')),
+       mio text NOT NULL check (mio in ('i', 'o')),
        seller_id uuid NOT NULL, 
-       sio CHAR(1) NOT NULL check (sio in ('i', 'o')),
+       sio text NOT NULL check (sio in ('i', 'o')),
        cost numeric(10,5) NOT NULL,
        grams numeric NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
@@ -150,9 +156,9 @@ CREATE TABLE ingredient_costs (
 CREATE TABLE cost_changes (
        ingredient_id uuid NOT NULL REFERENCES ingredients (ingredient_id),
        maker_id uuid NOT NULL, 
-       mio CHAR(1) NOT NULL check (mio in ('i', 'o')),
+       mio text NOT NULL check (mio in ('i', 'o')),
        seller_id uuid NOT NULL, 
-       sio CHAR(1) NOT NULL check (sio in ('i', 'o')),
+       sio text NOT NULL check (sio in ('i', 'o')),
        old_cost numeric(10,5) NOT NULL,
        new_cost numeric(10,5) NOT NULL,
        grams numeric NOT NULL,
@@ -204,7 +210,7 @@ CREATE TRIGGER cost_update
 
 CREATE TABLE doughs (
        dough_id uuid PRIMARY KEY default uuid_generate_v4(),
-       dough_name VARCHAR(70) UNIQUE NOT NULL,
+       dough_name VARCHAR UNIQUE NOT NULL,
        lead_time_days INTEGER NOT NULL,
        CONSTRAINT lead_time_greater_than_0 CHECK (lead_time_days >= 0),
        CONSTRAINT lead_time_less_than_8 CHECK (lead_time_days < 8)
@@ -213,7 +219,7 @@ CREATE TABLE doughs (
 
 CREATE TABLE shapes (
        shape_id uuid PRIMARY KEY default uuid_generate_v4(),
-       shape_name VARCHAR(70) UNIQUE NOT NULL
+       shape_name VARCHAR UNIQUE NOT NULL
 );
 
 -- Doughs may be divided into multiple shapes with different weights
@@ -247,7 +253,7 @@ CREATE TABLE dough_ingredients (
 
 
 CREATE TABLE dough_mods (                                                 
-       mod_name VARCHAR(40) NOT NULL, 
+       mod_name VARCHAR NOT NULL, 
        dough_id uuid NOT NULL REFERENCES doughs(dough_id),
        ingredient_id uuid NOT NULL REFERENCES ingredients(ingredient_id),
        bakers_percent NUMERIC (5, 2) NOT NULL,
@@ -269,7 +275,7 @@ CREATE TABLE dough_mods (
 CREATE TABLE special_orders (
        delivery_date DATE NOT NULL,
        customer_id uuid NOT NULL,
-       io char(1) NOT NULL,
+       io text NOT NULL,
        dough_id uuid NOT NULL REFERENCES doughs(dough_id),
        shape_id uuid NOT NULL REFERENCES shapes(shape_id),
        amt INTEGER NOT NULL,
@@ -285,7 +291,7 @@ CREATE TABLE special_orders (
 
 CREATE TABLE days_of_week (
        dow_id SMALLINT PRIMARY KEY,
-       dow_names CHAR(3) UNIQUE NOT NULL,
+       dow_names text UNIQUE NOT NULL,
        CONSTRAINT dow_id_between_0_and_7 check (dow_id > 0 AND dow_id <= 7),
        CONSTRAINT dow_names_3_letter_abr check (dow_names in ('Mon', 'Tue',
                  'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
@@ -294,7 +300,7 @@ CREATE TABLE days_of_week (
 CREATE TABLE standing_orders (
        day_of_week SMALLINT NOT NULL REFERENCES days_of_week(dow_id),
        customer_id uuid NOT NULL,
-       io char(1),
+       io text NOT NULL,
        dough_id uuid NOT NULL REFERENCES doughs(dough_id),
        shape_id uuid NOT NULL REFERENCES shapes(shape_id),
        amt INTEGER NOT NULL,
@@ -312,7 +318,7 @@ CREATE TABLE standing_orders (
 CREATE TABLE standing_changes (
        day_of_week SMALLINT NOT NULL REFERENCES days_of_week(dow_id),
        customer_id uuid NOT NULL,
-       io char(1),
+       io text NOT NULL,
        dough_id uuid NOT NULL REFERENCES doughs(dough_id),
        shape_id uuid NOT NULL REFERENCES shapes(shape_id),
        old_amt INTEGER NOT NULL,
