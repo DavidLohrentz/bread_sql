@@ -252,6 +252,67 @@ CREATE TABLE dough_ingredients (
 );
 
 
+CREATE TABLE dough_ingredients_changes (
+       dough_id uuid NOT NULL REFERENCES doughs(dough_id),
+       old_ingredient_id uuid NOT NULL REFERENCES ingredients(ingredient_id),
+       new_ingredient_id uuid NOT NULL REFERENCES ingredients(ingredient_id),
+       old_bakers_percent NUMERIC (5, 2) NOT NULL,
+       new_bakers_percent NUMERIC (5, 2) NOT NULL,
+       percent_in_sour NUMERIC NOT NULL,
+       percent_in_poolish NUMERIC (5, 2) NOT NULL,
+       percent_in_soaker NUMERIC NOT NULL,
+       created TIMESTAMPTZ DEFAULT now(),
+       modified TIMESTAMPTZ DEFAULT now(),
+       PRIMARY KEY (dough_id, new_ingredient_id, created),
+       CONSTRAINT bp_positive CHECK (new_bakers_percent > 0),
+       CONSTRAINT percent_in_sour_positive CHECK (percent_in_sour >= 0),
+       CONSTRAINT percent_in_sour_max_100 CHECK (percent_in_sour <= 100),
+       CONSTRAINT percent_in_poolish_positive CHECK (percent_in_poolish >= 0),
+       CONSTRAINT percent_in_poolish_max_100 CHECK (percent_in_poolish <= 100),
+       CONSTRAINT percent_in_soaker_positive CHECK (percent_in_soaker >= 0),
+       CONSTRAINT percent_in_soaker_max_100 CHECK (percent_in_soaker <= 100)
+);
+
+
+CREATE OR REPLACE FUNCTION record_if_di_changed()
+       RETURNS trigger AS
+    $$
+    BEGIN
+          IF NEW.ingredient_id <> OLD.ingredient_id OR 
+             NEW.bakers_percent <> OLD.bakers_percent THEN
+            INSERT INTO dough_ingredients_changes (
+            dough_id,
+            old_ingredient_id,
+            new_ingredient_id,
+            old_bakers_percent,
+            new_bakers_percent,
+            percent_in_sour,
+            percent_in_poolish,
+            percent_in_soaker,
+            modified)
+        VALUES (
+            OLD.dough_id,
+            OLD.ingredient_id,
+            NEW.ingredient_id,
+            OLD.bakers_percent,
+            NEW.bakers_percent,
+            OLD.percent_in_sour,
+            OLD.percent_in_poolish,
+            OLD.percent_in_soaker,
+            now()
+        );
+        END IF;
+        RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+
+CREATE TRIGGER di_update
+       AFTER UPDATE
+          on dough_ingredients
+       FOR EACH ROW
+       EXECUTE PROCEDURE record_if_di_changed();
+
 CREATE TABLE dough_mods (                                                 
        mod_name VARCHAR NOT NULL, 
        dough_id uuid NOT NULL REFERENCES doughs(dough_id),
