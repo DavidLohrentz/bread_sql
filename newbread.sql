@@ -33,12 +33,18 @@ VALUES ('i', 'Blow'),
        ('o', 'Meadowlark Organics'),
        ('o', 'Woodmans'),
        ('o', 'Willy St Coop'),
+       ('o', 'Costco'),
+       ('o', 'Kirkland'),
        ('o', 'King Arthur'),
        ('o', 'Redmond'),
        ('o', 'LeSaffre'),
        ('o', 'Siggis'),
+       ('o', 'Amazon'),
        ('o', 'New Glarus Brewery'),
        ('o', 'Eden'),
+       ('o', 'Terrasoul'),
+       ('o', 'Vitruvian'),
+       ('o', 'Sassy Cow'),
        ('o', 'Dept of Revenue'),
        ('o', 'Westside Farmers Market'),
        ('i', 'Latte')
@@ -153,7 +159,7 @@ CREATE TABLE ingredient_costs (
 );
 
 
-CREATE TABLE cost_changes (
+CREATE TABLE cost_change_log (
        ingredient_id uuid NOT NULL REFERENCES ingredients (ingredient_id),
        maker_id uuid NOT NULL, 
        mio text NOT NULL check (mio in ('i', 'o')),
@@ -175,7 +181,7 @@ CREATE OR REPLACE FUNCTION record_if_cost_changed()
     $$
     BEGIN
           IF NEW.cost <> OLD.cost OR NEW.grams <> OLD.grams THEN
-            INSERT INTO cost_changes (
+            INSERT INTO cost_change_log (
             ingredient_id,
             maker_id,
             mio,
@@ -356,7 +362,7 @@ CREATE TABLE special_orders (
 CREATE TABLE days_of_week (
        dow_id SMALLINT PRIMARY KEY,
        dow_names text UNIQUE NOT NULL,
-       CONSTRAINT dow_id_between_0_and_7 check (dow_id > 0 AND dow_id <= 7),
+       CONSTRAINT dow_id_between_0_and_7 check (dow_id >= 0 AND dow_id <= 6),
        CONSTRAINT dow_names_3_letter_abr check (dow_names in ('Mon', 'Tue',
                  'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
 ));
@@ -373,13 +379,13 @@ CREATE TABLE standing_orders (
        PRIMARY KEY (day_of_week, customer_id, dough_id, shape_id),
        FOREIGN KEY (customer_id, io) 
                     references parties (party_id, party_type),
-       CONSTRAINT dow_in_1_thru_7 check (day_of_week IN (1, 2, 3, 4, 5, 6, 7)),
+       CONSTRAINT dow_in_1_thru_7 check (day_of_week IN (0, 1, 2, 3, 4, 5, 6)),
        CONSTRAINT io_i_or_o CHECK (io in ('i', 'o')),
        CONSTRAINT amt_greater_than_0 CHECK (amt > 0)
 );
 
 
-CREATE TABLE standing_changes (
+CREATE TABLE standing_change_log (
        old_day_of_week SMALLINT NOT NULL REFERENCES days_of_week(dow_id),
        new_day_of_week SMALLINT NOT NULL REFERENCES days_of_week(dow_id),
        customer_id uuid NOT NULL,
@@ -392,7 +398,7 @@ CREATE TABLE standing_changes (
        PRIMARY KEY (new_day_of_week, customer_id, dough_id, shape_id, change_time),
        FOREIGN KEY (customer_id, io) 
                     references parties (party_id, party_type),
-       CONSTRAINT dow_in_1_thru_7 check (new_day_of_week IN (1, 2, 3, 4, 5, 6, 7)),
+       CONSTRAINT dow_in_1_thru_7 check (new_day_of_week IN (0, 1, 2, 3, 4, 5, 6)),
        CONSTRAINT io_i_or_o CHECK (io in ('i', 'o'))
 );
 
@@ -401,7 +407,7 @@ CREATE OR REPLACE FUNCTION record_if_amt_changed()
     $$
     BEGIN
           IF NEW.amt <> OLD.amt OR NEW.day_of_week <> OLD.day_of_week THEN
-            INSERT INTO standing_changes (
+            INSERT INTO standing_change_log (
             old_day_of_week,
             new_day_of_week,
             customer_id,
@@ -433,27 +439,28 @@ CREATE TRIGGER amt_update
        FOR EACH ROW
        EXECUTE PROCEDURE record_if_amt_changed();
 
-CREATE TABLE holds (
+  --make temporary changes to standing orders
+CREATE TABLE tmp_chng (
        day_of_week SMALLINT NOT NULL,
        customer_id uuid NOT NULL,
        dough_id uuid NOT NULL REFERENCES doughs(dough_id),
        shape_id uuid NOT NULL REFERENCES shapes(shape_id),
        start_date DATE NOT NULL,
        resume_date DATE,
-       decrease_percent numeric(4,1) NOT NULL,
+       --percent * 100 (to be multiplied by standing order amount during tmp change period)
+       percent_multiplier numeric(4,1) NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (day_of_week, customer_id, dough_id, shape_id, start_date),
        FOREIGN KEY (day_of_week, customer_id, dough_id, shape_id)
                REFERENCES standing_orders (day_of_week, customer_id, dough_id, shape_id),
-       CONSTRAINT dow_in_1_thru_7 check (day_of_week IN (1, 2, 3, 4, 5, 6, 7)),
+       CONSTRAINT dow_in_1_thru_7 check (day_of_week IN (0, 1, 2, 3, 4, 5, 6)),
        CONSTRAINT start_in_present_or_future CHECK (start_date >= now()::date),
        CONSTRAINT start_in_next_6_mons CHECK (start_date < now()::date + interval '6 months'),
        CONSTRAINT resume_in_present_or_future CHECK (resume_date >= now()::date),
        CONSTRAINT resume_in_next_6_mons CHECK (resume_date < now()::date + interval '6 months'),
        CONSTRAINT resume_after_start CHECK (resume_date > start_date),
-       CONSTRAINT decrease_less_than_or_equal_100 CHECK (decrease_percent <=100),
-       CONSTRAINT decrease_more_than_0 CHECK (decrease_percent >0)
+       CONSTRAINT multiplier_not_negative CHECK (percent_multiplier >=0)
 );
 
 
@@ -568,7 +575,7 @@ SELECT d.dough_id, p.party_name AS customer, so.delivery_date,
        AND s.shape_id = so.shape_id
   JOIN parties AS p on so.customer_id = p.party_id 
        AND so.io = p.party_type
- WHERE now()::date + d.lead_time_days = delivery_date;
+ WHERE now()::date + d.lead_time_days = so.delivery_date;
 
 CREATE OR REPLACE VIEW todays_order_summary AS 
 SELECT dough_id, dough_name, sum(amt * grams) AS total_grams
@@ -576,15 +583,15 @@ SELECT dough_id, dough_name, sum(amt * grams) AS total_grams
  GROUP BY dough_name, dough_id
  ORDER BY dough_id;
 
---same format as todays_orders but data is standing orders minus holds
-CREATE OR REPLACE VIEW standing_minus_holds AS
+--same format as todays_orders but data is standing orders minus tmp_chng
+CREATE OR REPLACE VIEW standing_minus_tmp_chng AS
 SELECT d.dough_id, p.party_name AS customer, now()::date + d.lead_time_days AS delivery_date,  
        d.lead_time_days AS lead_time, ROUND(amt::numeric * 
-       (1-(h.decrease_percent::numeric/100)),0) AS amt,  
+       (1-(h.percent_multiplier::numeric/100)),0) AS amt,  
        d.dough_name, s.shape_name, ds.ds_grams AS grams
 FROM standing_orders AS so                                       
 JOIN doughs AS d on so.dough_id = d.dough_id
-LEFT JOIN holds as h ON so.dough_id = h.dough_id AND so.shape_id = h.shape_id
+LEFT JOIN tmp_chng as h ON so.dough_id = h.dough_id AND so.shape_id = h.shape_id
 JOIN shapes AS s on so.shape_id = s.shape_id
 JOIN days_of_week as dw on so.day_of_week = dw.dow_id
 JOIN parties AS p on so.customer_id = p.party_id 
@@ -592,21 +599,56 @@ JOIN parties AS p on so.customer_id = p.party_id
 JOIN dough_shapes as ds on so.dough_id = ds.dough_id
      AND s.shape_id = ds.shape_id
 WHERE so.day_of_week = h.day_of_week
-AND h.decrease_percent < 100
+AND h.percent_multiplier < 100
 AND now()::date >= h.start_date - d.lead_time_days
 AND now()::date < h.resume_date - d.lead_time_days
 AND (SELECT date_part('dow', CURRENT_DATE)) + d.lead_time_days = so.day_of_week;
+
+
+CREATE OR REPLACE VIEW todays_combined_spec_standing AS
+WITH
+    adj_standing (dow, cid, did, dough_name, sid, amt, grams)
+AS
+    (
+SELECT so.day_of_week, so.customer_id, so.dough_id, d.dough_name, so.shape_id, 
+       COALESCE(round(so.amt * tc.percent_multiplier / 100, 0), so.amt), ds.ds_grams
+  FROM standing_orders AS so
+  JOIN doughs as d ON so.dough_id = d.dough_id
+  JOIN dough_shapes as ds ON so.dough_id = ds.dough_id AND so.shape_id = ds.shape_id
+  LEFT JOIN tmp_chng as tc
+       ON so.day_of_week = tc.day_of_week AND so.customer_id = tc.customer_id
+       AND so.dough_id = tc.dough_id AND so.shape_id = tc.shape_id
+ WHERE (so.day_of_week = (SELECT EXTRACT(DOW FROM TIMESTAMP 'now()')) + d.lead_time_days OR
+       so.day_of_week + 7 = (SELECT EXTRACT(DOW FROM TIMESTAMP 'now()')) + d.lead_time_days)
+       AND (so.amt * tc.percent_multiplier <> 0 
+       OR tc.percent_multiplier IS NULL)
+    ),
+
+    spec (dow, cid, did, dough_name, sid, amt, grams)
+AS
+    (
+SELECT date_part('dow', so.delivery_date), so.customer_id, so.dough_id, d.dough_name,
+       so.shape_id, so.amt, ds.ds_grams
+  FROM special_orders AS so
+  JOIN dough_shapes as ds ON so.dough_id = ds.dough_id AND so.shape_id = ds.shape_id
+  JOIN doughs as d ON so.dough_id = d.dough_id
+ WHERE now()::date + d.lead_time_days = so.delivery_date
+   )
+
+SELECT dow, cid, did, dough_name, sid, amt, grams
+  FROM adj_standing
+ UNION ALL
+SELECT dow, cid, did, dough_name, sid, amt, grams
+  FROM spec
+;
 
 
 CREATE OR REPLACE FUNCTION
 get_batch_weight(which_dough VARCHAR)
 RETURNS numeric AS
 'SELECT (SELECT COALESCE (sum(amt * grams), 0)
-   FROM todays_orders
-  WHERE LOWER(dough_name) LIKE LOWER(which_dough)) +
-  (SELECT COALESCE (sum(amt * grams), 0)
-     FROM standing_minus_holds
-   WHERE LOWER(dough_name) LIKE LOWER(which_dough))
+   FROM todays_combined_spec_standing
+  WHERE LOWER(dough_name) LIKE LOWER(which_dough))
 ;'
 LANGUAGE SQL
 IMMUTABLE
@@ -622,20 +664,20 @@ SELECT di.dough_id, d.dough_name, di.bakers_percent, i.ingredient_name AS ingred
 
 
 CREATE OR REPLACE VIEW standing_change_history AS
-SELECT p.party_name, d.dough_name, s.shape_name, dw.dow_names,
+SELECT p.party_name, d.dough_name, s.shape_name, dw.dow_names AS day_of_week,
        sc.old_amt, sc.new_amt, sc.change_time
-  FROM standing_changes as sc
+  FROM standing_change_log as sc
   JOIN parties as p on sc.customer_id = p.party_id AND sc.io = p.party_type
   JOIN doughs as d ON sc.dough_id = d.dough_id
   JOIN shapes AS s on sc.shape_id = s.shape_id
-  JOIN days_of_week AS dw on sc.day_of_week = dw.dow_id;
+  JOIN days_of_week AS dw on sc.old_day_of_week = dw.dow_id;
 
 
 CREATE OR REPLACE VIEW cost_change_list AS
 SELECT p.party_name as maker, i.ingredient_name as item, ROUND(cc.old_cost, 2) AS old_cost, 
-       ROUND(cc.new_cost, 2) AS new_cost, ROUND(cc.old_cost / grams, 5) AS old_cost_per_g, 
-       ROUND(cc.new_cost / grams, 5) as new_cost_per_g, cc.grams, cc.change_time
-  FROM cost_changes as cc
+       ROUND(cc.new_cost, 2) AS new_cost, ROUND(cc.old_cost / cc.old_grams, 5) AS old_cost_per_g, 
+       ROUND(cc.new_cost / cc.new_grams, 5) as new_cost_per_g, cc.new_grams, cc.change_time
+  FROM cost_change_log as cc
   JOIN ingredients as i on cc.ingredient_id = i.ingredient_id
   JOIN parties as p on cc.maker_id = p.party_id
  WHERE maker_id = p.party_id;
@@ -788,8 +830,8 @@ ORDER BY is_flour DESC, bakers_percent DESC)
       END;
 $$ LANGUAGE plpgsql;
 
-
---usage: SELECT "%", ingredient, overall, sour, poolish, soaker, final FROM formula('cran%');
+--usage: SELECT dough, ingredient, grams, cost From cost_form('rug%');
+--usage: SELECT sum(grams) AS grams, sum(cost) AS cost, ROUND(sum(cost) / sum(grams),4) AS cost_per_gram FROM cost_form('rug%');
 CREATE OR REPLACE FUNCTION cost_form(my_dough VARCHAR)
        RETURNS TABLE (dough character varying, ingredient character varying,
        grams NUMERIC, cost numeric) AS $$
@@ -870,7 +912,7 @@ CREATE TRIGGER update_dough_mods_modtime BEFORE UPDATE ON dough_mods
 CREATE TRIGGER update_spec_orders_modtime BEFORE UPDATE ON special_orders
    FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 
-CREATE TRIGGER update_holds_modtime BEFORE UPDATE ON holds
+CREATE TRIGGER update_tmp_chng_modtime BEFORE UPDATE ON tmp_chng
    FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 
 CREATE TRIGGER update_stand_orders_modtime BEFORE UPDATE ON standing_orders
@@ -903,8 +945,8 @@ VALUES ((SELECT party_id FROM parties WHERE party_name = 'Blow' AND now() - modi
 
             --shapes
 INSERT INTO shapes (shape_name)
-     VALUES ('12" Boule'),
-            ('4" pan loaves'),
+     VALUES ('12" boule'),
+            ('walter 25'),
             ('16" pizza'),
             ('7" pita'),
             ('hard rolls')
@@ -914,58 +956,74 @@ INSERT INTO shapes (shape_name)
 INSERT INTO doughs (dough_name, lead_time_days)
      VALUES ('cranberry walnut', 2),
             ('pizza dough', 1),
+            ('five day', 5),
+            ('goji almond nyt', 2),
             ('rugbrod', 2),
-            ('Kamut Sourdough', 2),
+            ('kamut sourdough', 2),
             ('pita bread', 1)
 ;
 
-            --ingredients
+            --ingredients (use lower case)
 INSERT INTO ingredients (ingredient_name, is_flour)
-     VALUES ('Bolted Red Fife Flour', TRUE),
-            ('Kamut Flour', TRUE),
-            ('Rye Flour', TRUE),
-            ('All Purpose Flour', TRUE),
-            ('Bread Flour', TRUE),
+     VALUES ('bolted red fife flour', TRUE),
+            ('kamut flour', TRUE),
+            ('rye flour', TRUE),
+            ('all purpose flour', TRUE),
+            ('bread flour', TRUE),
             ('water', FALSE),
-            ('High Extraction Flour', TRUE),
-            ('Sea Salt', FALSE),
+            ('high extraction flour', TRUE),
+            ('sea salt', FALSE),
             ('leaven', FALSE),
             ('saf-instant yeast', FALSE),
             ('dried cranberries', FALSE),
             ('walnuts', FALSE),
-            ('Turkey Red Flour', TRUE),
-            ('Filmjolk', FALSE),
-            ('Barley Malt Syrup', FALSE),
-            ('Sprouted Rye Berries', FALSE),
-            ('Whole Flax Seeds', FALSE),
-            ('Ground Flax Seeds', FALSE),
-            ('Sesame Seeds', FALSE),
-            ('pumpkin Seeds', FALSE)
+            ('almonds', FALSE),
+            ('turkey red flour', TRUE),
+            ('filmjolk', FALSE),
+            ('barley malt syrup', FALSE),
+            ('sprouted rye berries', FALSE),
+            ('sprouted spelt berries', FALSE),
+            ('whole flax seeds', FALSE),
+            ('ground flax seeds', FALSE),
+            ('sesame seeds', FALSE),
+            ('sunflower seeds', FALSE),
+            ('black sesame seeds', FALSE),
+            ('kefir whey', FALSE),
+            ('chia seeds', FALSE),
+            ('goji berries', FALSE),
+            ('pumpkin seeds', FALSE)
 ;
 
             --ingredient_costs
 INSERT INTO ingredient_costs (ingredient_id, maker_id, mio, seller_id, sio, cost, grams)
      VALUES 
-            (iid('Bolted Red Fife Flour'), pid('Meadowlark Organics'), 'o', pid('Meadowlark Organics'), 'o', 7.00, 907),
-            (iid('Kamut Flour'), pid('Madison Sourdough'), 'o', pid('Madison Sourdough'), 'o', 5.20, 907),
-            (iid('Rye Flour'), pid('Madison Sourdough'), 'o', pid('Madison Sourdough'), 'o', 5.20, 907),
-            (iid('All Purpose Flour'), pid('King Arthur'), 'o', pid('Woodmans'), 'o', 2.20, 907),
-            (iid('Bread Flour'), pid('King Arthur'), 'o', pid('Woodmans'), 'o', 2.20, 907),
+            (iid('bolted red fife flour'), pid('Meadowlark%'), 'o', pid('Meadowlark%'), 'o', 7.00, 907),
+            (iid('kamut flour'), pid('Madison Sourdough'), 'o', pid('Madison Sourdough'), 'o', 5.20, 907),
+            (iid('rye flour'), pid('Madison Sourdough'), 'o', pid('Madison Sourdough'), 'o', 5.20, 907),
+            (iid('all purpose flour'), pid('King Arthur'), 'o', pid('Woodmans'), 'o', 2.20, 907),
+            (iid('bread flour'), pid('King Arthur'), 'o', pid('Woodmans'), 'o', 2.20, 907),
             (iid('water'), pid('Woodmans'), 'o', pid('Woodmans'), 'o', .55, 3785),
-            (iid('High Extraction Flour'), pid('Madison Sourdough'), 'o', pid('Madison Sourdough'), 'o', 5.20, 907),
-            (iid('Sea Salt'), pid('Redmond'), 'o', pid('Willy St Coop'), 'o', 1.25, 450),
+            (iid('kefir whey'), pid('Sassy Cow'), 'o', pid('Woodmans'), 'o', 7.00, 3900),
+            (iid('high extraction flour'), pid('Madison Sour%'), 'o', pid('Madison Sour%'), 'o', 5.20, 907),
+            (iid('sea salt'), pid('Redmond'), 'o', pid('Willy St%'), 'o', 1.25, 450),
             (iid('leaven'), pid('Blow'), 'i', pid('Blow'), 'i', .75, 300),
             (iid('saf-instant yeast'), pid('LeSaffre'), 'o', pid('Willy St Coop'), 'o', 2.50, 450),
             (iid('dried cranberries'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 7.50, 450),
             (iid('walnuts'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 7.50, 450),
-            (iid('Turkey Red Flour'), pid('Meadowlark Organics'), 'o', pid('Meadowlark Organics'), 'o', 7.00, 907),
-            (iid('Filmjolk'), pid('Siggis'), 'o', pid('Woodmans'), 'o', 4.00, 2000),
-            (iid('Barley Malt Syrup'), pid('Eden'), 'o', pid('Willy St Coop'), 'o', 4.00, 566),
-            (iid('Sprouted Rye Berries'), pid('Blow'), 'i', pid('Blow'), 'i', 1.50, 450),
-            (iid('Whole Flax Seeds'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 3.00, 450),
-            (iid('Ground Flax Seeds'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 3.00, 450),
-            (iid('Sesame Seeds'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 3.50, 450),
-            (iid('pumpkin Seeds'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 4.50, 450)
+            (iid('almonds'), pid('Kirkland'), 'o', pid('Costco'), 'o', 10, 1360),
+            (iid('turkey red flour'), pid('Meadowlark%'), 'o', pid('Meadowlark%'), 'o', 7.00, 907),
+            (iid('filmjolk'), pid('Siggis'), 'o', pid('Woodmans'), 'o', 4.00, 2000),
+            (iid('barley malt syrup'), pid('Eden'), 'o', pid('Willy St Coop'), 'o', 4.00, 566),
+            (iid('sprouted rye berries'), pid('Blow'), 'i', pid('Blow'), 'i', 1.50, 450),
+            (iid('sprouted spelt berries'), pid('Blow'), 'i', pid('Blow'), 'i', 1.50, 450),
+            (iid('whole flax seeds'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 3.00, 450),
+            (iid('ground flax seeds'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 3.00, 450),
+            (iid('sesame seeds'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 3.50, 450),
+            (iid('black sesame seeds'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 12.95, 907),
+            (iid('sunflower seeds'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 10.95, 907),
+            (iid('chia seeds'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 10.75, 1134),
+            (iid('goji berries'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 13.85, 454),
+            (iid('pumpkin seeds'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 13.75, 907)
 ;
 
 
@@ -1001,41 +1059,61 @@ VALUES (pid('Blow'), 'p', 'bubba@gmail.com'),
 ;
 
 
-            --dough_shapes
+            --dough_shapes (use lower case)
 INSERT INTO dough_shapes (dough_id, shape_id, ds_grams)
-     VALUES (did('Kamut Sourdough'), sid('12" Boule'), 1600),
-            (did('rugbrod'), sid('4" pan loaves'), 1280),
+     VALUES (did('kamut sourdough'), sid('12" boule'), 1600),
+            (did('rugbrod'), sid('walter 25'), 1200),
             (did('pita bread'), sid('7" pita'), 105),
-            (did('cranberry walnut'), sid('12" Boule'), 1600),
+            (did('goji almond nyt'), sid('12" boule'), 1600),
+            (did('five%'), sid('12" boule'), 1600),
+            (did('cranberry walnut'), sid('12" boule'), 1600),
             (did('cranberry walnut'), sid('hard rolls'), 120),
             (did('pizza dough'), sid('16" pizza'), 400)
 ;
 
-            --dough_ingredients
+            --dough_ingredients(use lower case)
 INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent,
             percent_in_sour, percent_in_poolish, percent_in_soaker)
-     VALUES (did('Kamut Sourdough'), iid('Kamut Flour'), 40, 0, 0, 20),
-            (did('Kamut Sourdough'), iid('All Purpose Flour'), 30, 33, 0, 0),
-            (did('Kamut Sourdough'), iid('High Extraction Flour'), 30, 33, 0, 20),
-            (did('Kamut Sourdough'), iid('water'), 80, 20, 0, 18),
-            (did('Kamut Sourdough'), iid('Sea Salt'), 1.9, 0, 0, 0),
-            (did('cranberry walnut'), iid('Kamut Flour'), 40, 0, 0, 20),
-            (did('cranberry walnut'), iid('All Purpose Flour'), 30, 36, 0, 0),
-            (did('cranberry walnut'), iid('High Extraction Flour'), 30, 36, 0, 20),
+     VALUES (did('kamut sourdough'), iid('kamut flour'), 50, 0, 0, 20),
+            (did('kamut sourdough'), iid('all purpose flour'), 20, 33, 0, 0),
+            (did('kamut sourdough'), iid('high extraction flour'), 30, 33, 0, 20),
+            (did('kamut sourdough'), iid('water'), 80, 20, 0, 18),
+            (did('kamut sourdough'), iid('sea salt'), 1.9, 0, 0, 0),
+            (did('cranberry walnut'), iid('kamut flour'), 40, 0, 0, 20),
+            (did('cranberry walnut'), iid('all purpose flour'), 20, 36, 0, 0),
+            (did('cranberry walnut'), iid('high extraction flour'), 40, 36, 0, 20),
             (did('cranberry walnut'), iid('water'), 70, 22, 0, 18),
-            (did('cranberry walnut'), iid('Sea Salt'), 2.0, 0, 0, 0),
+            (did('cranberry walnut'), iid('sea salt'), 2.0, 0, 0, 0),
             (did('cranberry walnut'), iid('dried cranberries'), 25, 0, 0, 0),
             (did('cranberry walnut'), iid('walnuts'), 25, 0, 0, 0),
-            (did('pita bread'), iid('Bolted Red Fife Flour'), 50, 0, 0, 0),
-            (did('pita bread'), iid('All Purpose Flour'), 50, 5.4, 0, 0),
+            (did('goji almond nyt'), iid('kamut flour'), 45, 0, 0, 40),
+            (did('goji almond nyt'), iid('rye flour'), 10, 0, 0, 0),
+            (did('goji almond nyt'), iid('high extraction flour'), 45, 12, 0, 28),
+            (did('goji almond nyt'), iid('water'), 75, 5.4, 0, 30.6),
+            (did('goji almond nyt'), iid('sea salt'), 2.0, 0, 0, 0),
+            (did('goji almond nyt'), iid('goji berries'), 25, 0, 0, 0),
+            (did('goji almond nyt'), iid('almonds'), 25, 0, 0, 0),
+            (did('pita bread'), iid('bolted red fife flour'), 50, 0, 0, 0),
+            (did('pita bread'), iid('all purpose flour'), 50, 5.4, 0, 0),
             (did('pita bread'), iid('water'), 64, 2.4, 0, 0),
-            (did('pita bread'), iid('Sea Salt'), 1.9, 0, 0, 0),
-            (did('pizza dough'), iid('Bread Flour'), 80, 0, 25, 0),
-            (did('pizza dough'), iid('Kamut Flour'), 10, 0, 0, 0),
-            (did('pizza dough'), iid('High Extraction Flour'), 10, 0, 0, 0),
+            (did('pita bread'), iid('sea salt'), 1.9, 0, 0, 0),
+            (did('pizza dough'), iid('bread flour'), 30, 0, 25, 0),
+            (did('pizza dough'), iid('kamut flour'), 40, 0, 0, 0),
+            (did('pizza dough'), iid('high extraction flour'), 30, 0, 0, 0),
             (did('pizza dough'), iid('water'), 68, 0, 20, 0),
-            (did('pizza dough'), iid('Sea Salt'), 1.9, 0, 0, 0),
-            (did('pizza dough'), iid('saf-instant yeast'), .05, 0, 100, 0)
+            (did('pizza dough'), iid('sea salt'), 1.9, 0, 0, 0),
+            (did('pizza dough'), iid('saf-instant yeast'), .05, 0, 100, 0),
+            (did('rugbrod'), iid('rye flour'), 100, 27.3, 0, 0),
+            (did('rugbrod'), iid('water'), 103.6, 43.9, 0, 56.1),
+            (did('rugbrod'), iid('sunflower seeds'), 7.3, 0, 0, 100),
+            (did('rugbrod'), iid('black sesame seeds'), 5.4, 0, 0, 100),
+            (did('rugbrod'), iid('whole flax seeds'), 5.4, 0, 0, 100),
+            (did('rugbrod'), iid('chia seeds'), 3.64, 0, 0, 100),
+            (did('rugbrod'), iid('pumpkin seeds'), 36.4, 0, 0, 100),
+            (did('rugbrod'), iid('ground flax seeds'), 6.36, 0, 0, 0),
+            (did('rugbrod'), iid('sprouted spelt berries'), 26.4, 0, 0, 0),
+            (did('rugbrod'), iid('kefir whey'), 40, 0, 0, 0),
+            (did('rugbrod'), iid('sea salt'), 3.64, 0, 0, 0)
 ;
 
 
@@ -1043,18 +1121,26 @@ INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent,
 --otherwise, all dough_ingredient values will be used
 INSERT INTO dough_mods (mod_name, dough_id, ingredient_id, bakers_percent,
        percent_in_sour, percent_in_poolish, percent_in_soaker)
-       VALUES ('cranberry', did('Kamut Sourdough'), iid('dried cranberries'), 20, 0, 0, 0),
-              ('cranberry', did('Kamut Sourdough'), iid('water'), 75, 20, 0, 18),
-              ('cranberry', did('Kamut Sourdough'), iid('Sea Salt'), 2.0, 0, 0, 0)
+       VALUES ('cranberry', did('kamut sourdough'), iid('dried cranberries'), 20, 0, 0, 0),
+              ('cranberry', did('kamut sourdough'), iid('water'), 75, 20, 0, 18),
+              ('cranberry', did('kamut sourdough'), iid('sea salt'), 2.0, 0, 0, 0)
 ;
 
             --special_orders
 INSERT INTO special_orders (delivery_date, customer_id, io, dough_id,
             shape_id, amt, modified)
        VALUES 
+        --goji almond
+            --((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', did('goji%'), 
+                --sid('12" boule'), 1, (SELECT now())),
+
         --kamut
-            ((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', did('Kamut Sourdough'), 
-                sid('12" Boule'), 1, (SELECT now())),
+            ((SELECT now()::date + interval '5 days'), pid('Blow'), 'i', did('five%'), 
+                sid('12" boule'), 1, (SELECT now())),
+
+        --kamut
+            ((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', did('kamut sourdough'), 
+                sid('12" boule'), 1, (SELECT now())),
 
         --pizza
             ((SELECT now()::date + interval '1 day'), pid('Blow'), 'i', did('pizza dough'), 
@@ -1069,16 +1155,16 @@ INSERT INTO special_orders (delivery_date, customer_id, io, dough_id,
                 sid('7" pita'), 4, (SELECT now())),
         
         --rugbrod
-            ((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', did('rugbrod'), 
-                sid('4" pan loaves'), 2, (SELECT now())),
+            --((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', did('rugbrod'), 
+                --sid('walter 25'), 2, (SELECT now())),
 
         --cranberry walnut
             ((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', did('cranberry walnut'), 
                 sid('hard rolls'), 4, (SELECT now())),
-
+        
         --cranberry walnut
             ((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', did('cranberry walnut'), 
-                sid('12" Boule'), 1, (SELECT now()))
+                sid('12" boule'), 1, (SELECT now()))
 ;
 
 INSERT INTO days_of_week (dow_id, dow_names)
@@ -1089,50 +1175,64 @@ INSERT INTO days_of_week (dow_id, dow_names)
             (4, 'Thu'),
             (5, 'Fri'),
             (6, 'Sat'),
-            (7, 'Sun')
+            (0, 'Sun')
 ;
 
 INSERT INTO standing_orders (day_of_week, customer_id, io, dough_id,
             shape_id, amt, modified)
        VALUES 
-            --kamut
-            (1, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 2, (SELECT now())),
-            (2, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 2, (SELECT now())),
-            (3, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 1, (SELECT now())),
-            (4, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 1, (SELECT now())),
-            (5, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 1, (SELECT now())),
-            (6, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 1, (SELECT now())),
-            (7, pid('Blow'), 'i', did('Kamut Sourdough'), sid('12" Boule'), 4, (SELECT now()))
+            (1, pid('Blow'), 'i', did('goji%'), sid('12" boule'), 1, (SELECT now())),
+            (2, pid('Blow'), 'i', did('goji%'), sid('12" boule'), 1, (SELECT now())),
+            (3, pid('Blow'), 'i', did('goji%'), sid('12" boule'), 1, (SELECT now())),
+            (4, pid('Blow'), 'i', did('goji%'), sid('12" boule'), 1, (SELECT now())),
+            (5, pid('Blow'), 'i', did('goji%'), sid('12" boule'), 1, (SELECT now())),
+            (6, pid('Blow'), 'i', did('goji%'), sid('12" boule'), 1, (SELECT now())),
+            (0, pid('Blow'), 'i', did('goji%'), sid('12" boule'), 1, (SELECT now())),
+            (1, pid('Blow'), 'i', did('kamut sourdough'), sid('12" boule'), 2, (SELECT now())),
+            (2, pid('Blow'), 'i', did('kamut sourdough'), sid('12" boule'), 2, (SELECT now())),
+            (3, pid('Blow'), 'i', did('kamut sourdough'), sid('12" boule'), 1, (SELECT now())),
+            (4, pid('Blow'), 'i', did('kamut sourdough'), sid('12" boule'), 1, (SELECT now())),
+            (5, pid('Blow'), 'i', did('kamut sourdough'), sid('12" boule'), 1, (SELECT now())),
+            (6, pid('Blow'), 'i', did('kamut sourdough'), sid('12" boule'), 1, (SELECT now())),
+            (0, pid('Blow'), 'i', did('kamut sourdough'), sid('12" boule'), 4, (SELECT now())),
+            (1, pid('Blow'), 'i', did('rugbrod'), sid('walter 25'), 2, (SELECT now())),
+            (2, pid('Blow'), 'i', did('rugbrod'), sid('walter 25'), 2, (SELECT now())),
+            (3, pid('Blow'), 'i', did('rugbrod'), sid('walter 25'), 2, (SELECT now())),
+            (4, pid('Blow'), 'i', did('rugbrod'), sid('walter 25'), 2, (SELECT now())),
+            (5, pid('Blow'), 'i', did('rugbrod'), sid('walter 25'), 2, (SELECT now())),
+            (6, pid('Blow'), 'i', did('rugbrod'), sid('walter 25'), 2, (SELECT now())),
+            (0, pid('Blow'), 'i', did('rugbrod'), sid('walter 25'), 2, (SELECT now()))
 ;
 
-INSERT INTO holds (day_of_week, customer_id, dough_id, shape_id, start_date, resume_date, decrease_percent)
+--make temporary change to standing orders
+INSERT INTO tmp_chng (day_of_week, customer_id, dough_id, shape_id, start_date, resume_date, percent_multiplier)
        VALUES
-            (1, pid('Blow'), did('Kamut Sourdough'), sid('12" Boule'), 
+            (1, pid('Blow'), did('kamut sourdough'), sid('12" boule'), 
             (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50),
         
-            (2, pid('Blow'), did('Kamut Sourdough'), sid('12" Boule'), 
+            (2, pid('Blow'), did('kamut sourdough'), sid('12" boule'), 
             (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50),
 
-            (3, pid('Blow'), did('Kamut Sourdough'), sid('12" Boule'), 
-            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+            (3, pid('Blow'), did('kamut sourdough'), sid('12" boule'), 
+            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 200),
 
-            (4, pid('Blow'), did('Kamut Sourdough'), sid('12" Boule'), 
-            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+            (4, pid('Blow'), did('kamut sourdough'), sid('12" boule'), 
+            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 0),
         
-            (5, pid('Blow'), did('Kamut Sourdough'), sid('12" Boule'), 
-            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+            (5, pid('Blow'), did('kamut sourdough'), sid('12" boule'), 
+            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 0),
 
-            (6, pid('Blow'), did('Kamut Sourdough'), sid('12" Boule'), 
-            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 100),
+            (6, pid('Blow'), did('kamut sourdough'), sid('12" boule'), 
+            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 0),
 
-            (7, pid('Blow'), did('Kamut Sourdough'), sid('12" Boule'), 
+            (0, pid('Blow'), did('kamut sourdough'), sid('12" boule'), 
             (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50)
 ;
 
 UPDATE standing_orders 
    SET amt = 2
- WhERE day_of_week = 7 AND customer_id = pid('Blow')
-   AND dough_id = did('Kamut Sourdough');
+ WhERE day_of_week = 0 AND customer_id = pid('Blow')
+   AND dough_id = did('kam%');
 
 
 UPDATE parties
@@ -1141,7 +1241,7 @@ WHERE party_name Like 'Dept%';
 
 UPDATE ingredient_costs
    SET cost = 5.00
- WHERE ingredient_id = iid('Kamut Flour')
+ WHERE ingredient_id = iid('kamut flour')
 
 -- Ran five tests with 2 indexes + no index on 
 -- party_name and ingredient_name
