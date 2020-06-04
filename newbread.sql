@@ -18,7 +18,6 @@ CREATE TABLE parties (
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (party_id, party_type),
-       CONSTRAINT type_length_1 CHECK (length(party_type)=1),
        CONSTRAINT party_type_i_or_o CHECK (party_type in ('i', 'o'))
 );
 
@@ -225,6 +224,10 @@ CREATE TABLE doughs (
        CONSTRAINT lead_time_less_than_8 CHECK (lead_time_days < 8)
 );
 
+CREATE INDEX doughs_dough_name_trgm_idx ON doughs
+ USING GIN (dough_name gin_trgm_ops);
+--CREATE INDEX ingredients_idx On ingredients (ingredient_name);
+
 
 CREATE TABLE shapes (
        shape_id uuid PRIMARY KEY default uuid_generate_v4(),
@@ -362,7 +365,7 @@ CREATE TABLE special_orders (
 CREATE TABLE days_of_week (
        dow_id SMALLINT PRIMARY KEY,
        dow_names text UNIQUE NOT NULL,
-       CONSTRAINT dow_id_between_0_and_7 check (dow_id >= 0 AND dow_id <= 6),
+       CONSTRAINT dow_id_between_0_and_6 check (dow_id >= 0 AND dow_id <= 6),
        CONSTRAINT dow_names_3_letter_abr check (dow_names in ('Mon', 'Tue',
                  'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
 ));
@@ -379,7 +382,7 @@ CREATE TABLE standing_orders (
        PRIMARY KEY (day_of_week, customer_id, dough_id, shape_id),
        FOREIGN KEY (customer_id, io) 
                     references parties (party_id, party_type),
-       CONSTRAINT dow_in_1_thru_7 check (day_of_week IN (0, 1, 2, 3, 4, 5, 6)),
+       CONSTRAINT dow_in_0_thru_6 check (day_of_week IN (0, 1, 2, 3, 4, 5, 6)),
        CONSTRAINT io_i_or_o CHECK (io in ('i', 'o')),
        CONSTRAINT amt_greater_than_0 CHECK (amt > 0)
 );
@@ -398,7 +401,7 @@ CREATE TABLE standing_change_log (
        PRIMARY KEY (new_day_of_week, customer_id, dough_id, shape_id, change_time),
        FOREIGN KEY (customer_id, io) 
                     references parties (party_id, party_type),
-       CONSTRAINT dow_in_1_thru_7 check (new_day_of_week IN (0, 1, 2, 3, 4, 5, 6)),
+       CONSTRAINT dow_in_0_thru_6 check (new_day_of_week IN (0, 1, 2, 3, 4, 5, 6)),
        CONSTRAINT io_i_or_o CHECK (io in ('i', 'o'))
 );
 
@@ -454,11 +457,11 @@ CREATE TABLE tmp_chng (
        PRIMARY KEY (day_of_week, customer_id, dough_id, shape_id, start_date),
        FOREIGN KEY (day_of_week, customer_id, dough_id, shape_id)
                REFERENCES standing_orders (day_of_week, customer_id, dough_id, shape_id),
-       CONSTRAINT dow_in_1_thru_7 check (day_of_week IN (0, 1, 2, 3, 4, 5, 6)),
-       CONSTRAINT start_in_present_or_future CHECK (start_date >= now()::date),
-       CONSTRAINT start_in_next_6_mons CHECK (start_date < now()::date + interval '6 months'),
-       CONSTRAINT resume_in_present_or_future CHECK (resume_date >= now()::date),
-       CONSTRAINT resume_in_next_6_mons CHECK (resume_date < now()::date + interval '6 months'),
+       CONSTRAINT dow_in_0_thru_6 check (day_of_week IN (0, 1, 2, 3, 4, 5, 6)),
+       CONSTRAINT start_date_in_next_6_mos CHECK (start_date >= now()::date AND 
+                  start_date < now()::date + interval '6 months'),
+       CONSTRAINT resume_in_next_6_mos CHECK (resume_date >= now()::date 
+                  AND resume_date < now()::date + interval '6 months'),
        CONSTRAINT resume_after_start CHECK (resume_date > start_date),
        CONSTRAINT multiplier_not_negative CHECK (percent_multiplier >=0)
 );
@@ -583,47 +586,36 @@ SELECT dough_id, dough_name, sum(amt * grams) AS total_grams
  GROUP BY dough_name, dough_id
  ORDER BY dough_id;
 
---same format as todays_orders but data is standing orders minus tmp_chng
-CREATE OR REPLACE VIEW standing_minus_tmp_chng AS
-SELECT d.dough_id, p.party_name AS customer, now()::date + d.lead_time_days AS delivery_date,  
-       d.lead_time_days AS lead_time, ROUND(amt::numeric * 
-       (1-(h.percent_multiplier::numeric/100)),0) AS amt,  
-       d.dough_name, s.shape_name, ds.ds_grams AS grams
-FROM standing_orders AS so                                       
-JOIN doughs AS d on so.dough_id = d.dough_id
-LEFT JOIN tmp_chng as h ON so.dough_id = h.dough_id AND so.shape_id = h.shape_id
-JOIN shapes AS s on so.shape_id = s.shape_id
-JOIN days_of_week as dw on so.day_of_week = dw.dow_id
-JOIN parties AS p on so.customer_id = p.party_id 
-     AND so.io = p.party_type
-JOIN dough_shapes as ds on so.dough_id = ds.dough_id
-     AND s.shape_id = ds.shape_id
-WHERE so.day_of_week = h.day_of_week
-AND h.percent_multiplier < 100
-AND now()::date >= h.start_date - d.lead_time_days
-AND now()::date < h.resume_date - d.lead_time_days
-AND (SELECT date_part('dow', CURRENT_DATE)) + d.lead_time_days = so.day_of_week;
 
+CREATE OR REPLACE VIEW todays_adjusted_so AS
+WITH
+   current_so_changes (dow, cid, did, sid, pm)
+  AS
+(
+    SELECT tc.day_of_week, tc.customer_id, tc.dough_id, tc.shape_id, tc.percent_multiplier
+    FROM tmp_chng AS tc
+    JOIN doughs as d ON tc.dough_id = d.dough_id
+    WHERE tc.start_date - d.lead_time_days <= TIMESTAMP 'now()'::date
+          AND tc.resume_date - d.lead_time_days > TIMESTAMP 'now()'::date
+)
 
+SELECT so.day_of_week as dow, so.customer_id as cid, so.dough_id as did, d.dough_name, so.shape_id as sid,
+       COALESCE(round(so.amt * csc.pm / 100, 0), so.amt) AS amt, ds.ds_grams as grams
+  FROM standing_orders as so
+  LEFT JOIN current_so_changes as csc
+       ON so.day_of_week = csc.dow AND so.customer_id = csc.cid
+       AND so.dough_id = csc.did AND so.shape_id = csc.sid
+  JOIN doughs as d on so.dough_id = d.dough_id
+  JOIN dough_shapes as ds ON so.dough_id = ds.dough_id AND so.shape_id = ds.shape_id
+ WHERE 
+       so.day_of_week = (SELECT EXTRACT(DOW FROM TIMESTAMP 'now()')) + d.lead_time_days 
+       OR
+       so.day_of_week + 7 = (SELECT EXTRACT(DOW FROM TIMESTAMP 'now()')) + d.lead_time_days
+;
+
+--used by get_batch_weight function, which is called by formula function
 CREATE OR REPLACE VIEW todays_combined_spec_standing AS
 WITH
-    adj_standing (dow, cid, did, dough_name, sid, amt, grams)
-AS
-    (
-SELECT so.day_of_week, so.customer_id, so.dough_id, d.dough_name, so.shape_id, 
-       COALESCE(round(so.amt * tc.percent_multiplier / 100, 0), so.amt), ds.ds_grams
-  FROM standing_orders AS so
-  JOIN doughs as d ON so.dough_id = d.dough_id
-  JOIN dough_shapes as ds ON so.dough_id = ds.dough_id AND so.shape_id = ds.shape_id
-  LEFT JOIN tmp_chng as tc
-       ON so.day_of_week = tc.day_of_week AND so.customer_id = tc.customer_id
-       AND so.dough_id = tc.dough_id AND so.shape_id = tc.shape_id
- WHERE (so.day_of_week = (SELECT EXTRACT(DOW FROM TIMESTAMP 'now()')) + d.lead_time_days OR
-       so.day_of_week + 7 = (SELECT EXTRACT(DOW FROM TIMESTAMP 'now()')) + d.lead_time_days)
-       AND (so.amt * tc.percent_multiplier <> 0 
-       OR tc.percent_multiplier IS NULL)
-    ),
-
     spec (dow, cid, did, dough_name, sid, amt, grams)
 AS
     (
@@ -635,13 +627,13 @@ SELECT date_part('dow', so.delivery_date), so.customer_id, so.dough_id, d.dough_
  WHERE now()::date + d.lead_time_days = so.delivery_date
    )
 
-SELECT dow, cid, did, dough_name, sid, amt, grams
-  FROM adj_standing
+SELECT dow, cid, did, dough_name, 
+       sid, amt, grams
+  FROM todays_adjusted_so
  UNION ALL
 SELECT dow, cid, did, dough_name, sid, amt, grams
   FROM spec
 ;
-
 
 CREATE OR REPLACE FUNCTION
 get_batch_weight(which_dough VARCHAR)
@@ -695,6 +687,7 @@ SELECT DISTINCT dough_name, sum(bakers_percent) OVER
        (partition by dough_name) AS total_bp
   FROM dough_info;
 
+--called by formula function
 CREATE OR REPLACE FUNCTION bak_per(which_doe VARCHAR)
   returns numeric AS
           'SELECT DISTINCT sum(bakers_percent) OVER (PARTITION BY dough_id)
@@ -948,6 +941,7 @@ INSERT INTO shapes (shape_name)
      VALUES ('12" boule'),
             ('walter 25'),
             ('16" pizza'),
+            ('baguette'),
             ('7" pita'),
             ('hard rolls')
 ;
@@ -1134,7 +1128,7 @@ INSERT INTO special_orders (delivery_date, customer_id, io, dough_id,
             --((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', did('goji%'), 
                 --sid('12" boule'), 1, (SELECT now())),
 
-        --kamut
+        --five
             ((SELECT now()::date + interval '5 days'), pid('Blow'), 'i', did('five%'), 
                 sid('12" boule'), 1, (SELECT now())),
 
@@ -1188,13 +1182,13 @@ INSERT INTO standing_orders (day_of_week, customer_id, io, dough_id,
             (5, pid('Blow'), 'i', did('goji%'), sid('12" boule'), 1, (SELECT now())),
             (6, pid('Blow'), 'i', did('goji%'), sid('12" boule'), 1, (SELECT now())),
             (0, pid('Blow'), 'i', did('goji%'), sid('12" boule'), 1, (SELECT now())),
-            (1, pid('Blow'), 'i', did('kamut sourdough'), sid('12" boule'), 2, (SELECT now())),
-            (2, pid('Blow'), 'i', did('kamut sourdough'), sid('12" boule'), 2, (SELECT now())),
-            (3, pid('Blow'), 'i', did('kamut sourdough'), sid('12" boule'), 1, (SELECT now())),
-            (4, pid('Blow'), 'i', did('kamut sourdough'), sid('12" boule'), 1, (SELECT now())),
-            (5, pid('Blow'), 'i', did('kamut sourdough'), sid('12" boule'), 1, (SELECT now())),
-            (6, pid('Blow'), 'i', did('kamut sourdough'), sid('12" boule'), 1, (SELECT now())),
-            (0, pid('Blow'), 'i', did('kamut sourdough'), sid('12" boule'), 4, (SELECT now())),
+            (1, pid('Blow'), 'i', did('kamut%'), sid('12" boule'), 2, (SELECT now())),
+            (2, pid('Blow'), 'i', did('kamut%'), sid('12" boule'), 2, (SELECT now())),
+            (3, pid('Blow'), 'i', did('kamut%'), sid('12" boule'), 1, (SELECT now())),
+            (4, pid('Blow'), 'i', did('kamut%'), sid('12" boule'), 1, (SELECT now())),
+            (5, pid('Blow'), 'i', did('kamut%'), sid('12" boule'), 1, (SELECT now())),
+            (6, pid('Blow'), 'i', did('kamut%'), sid('12" boule'), 1, (SELECT now())),
+            (0, pid('Blow'), 'i', did('kamut%'), sid('12" boule'), 4, (SELECT now())),
             (1, pid('Blow'), 'i', did('rugbrod'), sid('walter 25'), 2, (SELECT now())),
             (2, pid('Blow'), 'i', did('rugbrod'), sid('walter 25'), 2, (SELECT now())),
             (3, pid('Blow'), 'i', did('rugbrod'), sid('walter 25'), 2, (SELECT now())),
@@ -1217,13 +1211,13 @@ INSERT INTO tmp_chng (day_of_week, customer_id, dough_id, shape_id, start_date, 
             (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 200),
 
             (4, pid('Blow'), did('kamut sourdough'), sid('12" boule'), 
-            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 0),
+            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 150),
         
             (5, pid('Blow'), did('kamut sourdough'), sid('12" boule'), 
-            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 0),
+            (SELECT now()::date + interval '8 days'), (SELECT now()::date + interval '14 days'), 300),
 
             (6, pid('Blow'), did('kamut sourdough'), sid('12" boule'), 
-            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 0),
+            (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 200),
 
             (0, pid('Blow'), did('kamut sourdough'), sid('12" boule'), 
             (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50)
