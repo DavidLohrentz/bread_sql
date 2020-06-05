@@ -8,11 +8,11 @@ CREATE DATABASE bread;
 
 SET timezone = 'US/Central';
 
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE TABLE parties (
-       party_id uuid default uuid_generate_v4(),
+       party_id uuid default gen_random_uuid(),
        party_type text NOT NULL,
        party_name VARCHAR(80) NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
@@ -131,7 +131,7 @@ CREATE TABLE emails (
 );
 
 CREATE TABLE ingredients (
-       ingredient_id uuid PRIMARY KEY default uuid_generate_v4(),
+       ingredient_id uuid PRIMARY KEY default gen_random_uuid(),
        ingredient_name VARCHAR NOT NULL,
        is_flour BOOLEAN NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
@@ -217,7 +217,7 @@ CREATE TRIGGER cost_update
 
 
 CREATE TABLE doughs (
-       dough_id uuid PRIMARY KEY default uuid_generate_v4(),
+       dough_id uuid PRIMARY KEY default gen_random_uuid(),
        dough_name VARCHAR UNIQUE NOT NULL,
        lead_time_days INTEGER NOT NULL,
        CONSTRAINT lead_time_greater_than_0 CHECK (lead_time_days >= 0),
@@ -230,7 +230,7 @@ CREATE INDEX doughs_dough_name_trgm_idx ON doughs
 
 
 CREATE TABLE shapes (
-       shape_id uuid PRIMARY KEY default uuid_generate_v4(),
+       shape_id uuid PRIMARY KEY default gen_random_uuid(),
        shape_name VARCHAR UNIQUE NOT NULL
 );
 
