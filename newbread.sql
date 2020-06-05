@@ -1234,7 +1234,7 @@ SET party_name = 'Dept of Shenanigans'
 WHERE party_name Like 'Dept%';
 
 UPDATE ingredient_costs
-   SET cost = 5.00
+   SET cost = 6.00
  WHERE ingredient_id = iid('kamut flour')
 
 -- Ran five tests with 2 indexes + no index on 
