@@ -654,7 +654,7 @@ LANGUAGE SQL
 IMMUTABLE
 RETURNS NULL ON NULL INPUT;
 
-CREATE OR REPLACE VIEW dough_info AS 
+CREATE OR REPLACE VIEW product_info AS 
 SELECT di.product_id, pr.product_name, di.bakers_percent, i.ingredient_name AS ingredient, 
        i.is_flour, di.percent_in_sour, di.percent_in_poolish, di.percent_in_soaker
   FROM product_ingredients AS di
@@ -693,13 +693,13 @@ SELECT i.ingredient_id, i.ingredient_name, ROUND(ic.cost, 2) AS cost, ic.grams,
 CREATE OR REPLACE VIEW total_bp AS
 SELECT DISTINCT product_name, sum(bakers_percent) OVER 
        (partition by product_name) AS total_bp
-  FROM dough_info;
+  FROM product_info;
 
 --called by formula function
 CREATE OR REPLACE FUNCTION bak_per(which_doe VARCHAR)
   returns numeric AS
           'SELECT DISTINCT sum(bakers_percent) OVER (PARTITION BY product_id)
-          FROM dough_info WHERE LOWER(product_name) LIKE LOWER(which_doe);'
+          FROM product_info WHERE LOWER(product_name) LIKE LOWER(which_doe);'
  LANGUAGE SQL
 IMMUTABLE
   RETURNS NULL ON NULL INPUT;
@@ -764,11 +764,22 @@ IMMUTABLE
   RETURNS NULL ON NULL INPUT;
 
 
---usage: SELECT "%", ingredient, overall, sour, poolish, soaker, final FROM formula('kam%');
---SELECT "%", ingredient, overall as grams FROM formula('cao%');
+--formula function usage: 
+
+--formula with sour and soaker:
+         --SELECT "%", ingredient, overall, sour, soaker, final FROM formula('kam%');
+--formula with poolish:
+         --SELECT "%", ingredient, overall, poolish, final FROM formula('pizza');
+--recipe with no preferments
+         --SELECT "%", ingredient, overall as grams FROM formula('cao%');
+--sum of the product cost
+         --SELECT sum(cost) FROM formula('rug%');
+--cost per gram
+         --SELECT sum(overall) AS grams, sum(cost) AS cost, ROUND(sum(cost) / sum(overall),4) AS cost_per_gram FROM formula('rug%');
+
 CREATE OR REPLACE FUNCTION formula(my_product VARCHAR)
-       RETURNS TABLE (dough character varying, "%" numeric, ingredient character varying,
-       overall numeric, sour numeric, poolish numeric, soaker numeric, final numeric) AS $$
+       RETURNS TABLE (product character varying, "%" numeric, ingredient character varying,
+       overall numeric, sour numeric, poolish numeric, soaker numeric, final numeric, cost numeric) AS $$
        BEGIN
              RETURN QUERY
                     SELECT din.product_name, din.bakers_percent, din.ingredient,
@@ -782,8 +793,11 @@ CREATE OR REPLACE FUNCTION formula(my_product VARCHAR)
                           bak_per(my_product) * din.percent_in_soaker /100, 0),
                     ROUND(get_batch_weight(my_product) * din.bakers_percent /
                           bak_per(my_product) * (1- (din.percent_in_sour + 
-                          din.percent_in_poolish + din.percent_in_soaker)/100), 0)
-                    FROM dough_info AS din
+                          din.percent_in_poolish + din.percent_in_soaker)/100), 0),
+                    ROUND(get_batch_weight(my_product) * din.bakers_percent /
+                          bak_per(my_product), 0) * cl.cost_per_g AS cost
+                    FROM product_info AS din
+                    JOIN cost_list as cl on din.ingredient = cl.ingredient_name
                     WHERE LOWER(din.product_name) LIKE LOWER(my_product);
       END;
 $$ LANGUAGE plpgsql;
@@ -831,44 +845,6 @@ ORDER BY is_flour DESC, bakers_percent DESC)
                     ;
       END;
 $$ LANGUAGE plpgsql;
-
---usage: SELECT product, ingredient, grams, cost From cost_form('rug%');
---usage: SELECT sum(grams) AS grams, sum(cost) AS cost, ROUND(sum(cost) / sum(grams),4) AS cost_per_gram FROM cost_form('rug%');
-CREATE OR REPLACE FUNCTION cost_form(my_product VARCHAR)
-       RETURNS TABLE (product character varying, ingredient character varying,
-       grams NUMERIC, cost numeric) AS $$
-       BEGIN
-             RETURN QUERY
-                    SELECT din.product_name, din.ingredient,
-                    ROUND(get_batch_weight(my_product) * din.bakers_percent /
-                          bak_per(my_product), 0),
-                    ROUND(get_batch_weight(my_product) * din.bakers_percent /
-                          bak_per(my_product), 0) * cl.cost_per_g AS item_cost
-                    FROM dough_info AS din
-                    JOIN cost_list as cl on din.ingredient = cl.ingredient_name
-                    WHERE LOWER(din.product_name) LIKE LOWER(my_product)
-                    ORDER BY item_cost DESC;
-      END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION test()
-       RETURNS TABLE (shape character varying) AS $$
-       BEGIN
-            RETURN QUERY
-                   SELECT shape_name
-                   FROM shapes;
-       END;
-$$ LANGUAGE plpgsql;
-
-
--- usage: SELECT cost_per_kg('cran%');
-CREATE OR REPLACE FUNCTION cost_per_kg(which_do VARCHAR)
-  returns numeric AS
-          'SELECT round(SUM(cost) / (SUM(grams) / 1000), 2) 
-          FROM cost_form(LOWER(which_do));'
- LANGUAGE SQL
-IMMUTABLE
-  RETURNS NULL ON NULL INPUT;
 
 
        --Useage: SELECT * FROM phone_search('mad%');
