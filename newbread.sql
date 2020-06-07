@@ -42,8 +42,13 @@ VALUES ('i', 'Blow'),
        ('o', 'New Glarus Brewery'),
        ('o', 'Eden'),
        ('o', 'Terrasoul'),
+       ('o', 'Ceylon Flavors'),
+       ('o', 'Now'),
+       ('o', 'Viva Naturals'),
+       ('o', 'Red Boat'),
        ('o', 'Vitruvian'),
        ('o', 'Sassy Cow'),
+       ('o', 'Rani Brands'),
        ('o', 'Dept of Revenue'),
        ('o', 'Westside Farmers Market'),
        ('i', 'Latte')
@@ -216,17 +221,17 @@ CREATE TRIGGER cost_update
        EXECUTE PROCEDURE record_if_cost_changed();
 
 
-CREATE TABLE doughs (
-       dough_id uuid PRIMARY KEY default gen_random_uuid(),
-       dough_name VARCHAR UNIQUE NOT NULL,
+CREATE TABLE products (
+       product_id uuid PRIMARY KEY default gen_random_uuid(),
+       product_name VARCHAR UNIQUE NOT NULL,
        lead_time_days INTEGER NOT NULL,
-       CONSTRAINT lead_time_greater_than_0 CHECK (lead_time_days >= 0),
+       is_dough BOOLEAN DEFAULT 'true' NOT NULL,
+       CONSTRAINT lead_time_not_negative CHECK (lead_time_days >= 0),
        CONSTRAINT lead_time_less_than_8 CHECK (lead_time_days < 8)
 );
 
-CREATE INDEX doughs_dough_name_trgm_idx ON doughs
- USING GIN (dough_name gin_trgm_ops);
---CREATE INDEX ingredients_idx On ingredients (ingredient_name);
+CREATE INDEX products_product_name_trgm_idx ON products
+ USING GIN (product_name gin_trgm_ops);
 
 
 CREATE TABLE shapes (
@@ -234,18 +239,18 @@ CREATE TABLE shapes (
        shape_name VARCHAR UNIQUE NOT NULL
 );
 
--- Doughs may be divided into multiple shapes with different weights
-CREATE TABLE dough_shapes (
-       dough_id uuid NOT NULL REFERENCES doughs(dough_id),
+-- products may be divided into multiple shapes with different weights
+CREATE TABLE product_shapes (
+       product_id uuid NOT NULL REFERENCES products(product_id),
        shape_id uuid NOT NULL REFERENCES shapes(shape_id),
-       ds_grams INTEGER NOT NULL,
-       CONSTRAINT ds_grams_greater_than_0 CHECK (ds_grams > 0),
-       CONSTRAINT ds_grams_less_than_3000 CHECK (ds_grams < 3000),
-       PRIMARY KEY (dough_id, shape_id)
+       grams INTEGER NOT NULL,
+       CONSTRAINT grams_greater_than_0 CHECK (grams > 0),
+       CONSTRAINT grams_less_than_3000 CHECK (grams < 3000),
+       PRIMARY KEY (product_id, shape_id)
 );
 
-CREATE TABLE dough_ingredients (
-       dough_id uuid NOT NULL REFERENCES doughs(dough_id),
+CREATE TABLE product_ingredients (
+       product_id uuid NOT NULL REFERENCES products(product_id),
        ingredient_id uuid NOT NULL REFERENCES ingredients(ingredient_id),
        bakers_percent NUMERIC (5, 2) NOT NULL,
        percent_in_sour NUMERIC NOT NULL,
@@ -253,7 +258,7 @@ CREATE TABLE dough_ingredients (
        percent_in_soaker NUMERIC NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
-       PRIMARY KEY (dough_id, ingredient_id),
+       PRIMARY KEY (product_id, ingredient_id),
        CONSTRAINT bp_positive CHECK (bakers_percent > 0),
        CONSTRAINT percent_in_sour_positive CHECK (percent_in_sour >= 0),
        CONSTRAINT percent_in_sour_max_100 CHECK (percent_in_sour <= 100),
@@ -264,8 +269,8 @@ CREATE TABLE dough_ingredients (
 );
 
 
-CREATE TABLE dough_ingredients_changes (
-       dough_id uuid NOT NULL REFERENCES doughs(dough_id),
+CREATE TABLE product_ingredients_changes (
+       product_id uuid NOT NULL REFERENCES products(product_id),
        old_ingredient_id uuid NOT NULL REFERENCES ingredients(ingredient_id),
        new_ingredient_id uuid NOT NULL REFERENCES ingredients(ingredient_id),
        old_bakers_percent NUMERIC (5, 2) NOT NULL,
@@ -275,7 +280,7 @@ CREATE TABLE dough_ingredients_changes (
        percent_in_soaker NUMERIC NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
-       PRIMARY KEY (dough_id, new_ingredient_id, created),
+       PRIMARY KEY (product_id, new_ingredient_id, created),
        CONSTRAINT bp_positive CHECK (new_bakers_percent > 0),
        CONSTRAINT percent_in_sour_positive CHECK (percent_in_sour >= 0),
        CONSTRAINT percent_in_sour_max_100 CHECK (percent_in_sour <= 100),
@@ -292,8 +297,8 @@ CREATE OR REPLACE FUNCTION record_if_di_changed()
     BEGIN
           IF NEW.ingredient_id <> OLD.ingredient_id OR 
              NEW.bakers_percent <> OLD.bakers_percent THEN
-            INSERT INTO dough_ingredients_changes (
-            dough_id,
+            INSERT INTO product_ingredients_changes (
+            product_id,
             old_ingredient_id,
             new_ingredient_id,
             old_bakers_percent,
@@ -303,7 +308,7 @@ CREATE OR REPLACE FUNCTION record_if_di_changed()
             percent_in_soaker,
             modified)
         VALUES (
-            OLD.dough_id,
+            OLD.product_id,
             OLD.ingredient_id,
             NEW.ingredient_id,
             OLD.bakers_percent,
@@ -321,13 +326,13 @@ CREATE OR REPLACE FUNCTION record_if_di_changed()
 
 CREATE TRIGGER di_update
        AFTER UPDATE
-          on dough_ingredients
+          on product_ingredients
        FOR EACH ROW
        EXECUTE PROCEDURE record_if_di_changed();
 
 CREATE TABLE dough_mods (                                                 
        mod_name VARCHAR NOT NULL, 
-       dough_id uuid NOT NULL REFERENCES doughs(dough_id),
+       product_id uuid NOT NULL REFERENCES products(product_id),
        ingredient_id uuid NOT NULL REFERENCES ingredients(ingredient_id),
        bakers_percent NUMERIC (5, 2) NOT NULL,
        percent_in_sour NUMERIC NOT NULL,
@@ -335,7 +340,7 @@ CREATE TABLE dough_mods (
        percent_in_soaker NUMERIC NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
-       PRIMARY KEY (mod_name, dough_id, ingredient_id),
+       PRIMARY KEY (mod_name, product_id, ingredient_id),
        CONSTRAINT bp_positive CHECK (bakers_percent > 0),
        CONSTRAINT percent_in_sour_positive CHECK (percent_in_sour >= 0),
        CONSTRAINT percent_in_sour_max_100 CHECK (percent_in_sour <= 100),
@@ -349,12 +354,12 @@ CREATE TABLE special_orders (
        delivery_date DATE NOT NULL,
        customer_id uuid NOT NULL,
        io text NOT NULL,
-       dough_id uuid NOT NULL REFERENCES doughs(dough_id),
+       product_id uuid NOT NULL REFERENCES products(product_id),
        shape_id uuid NOT NULL REFERENCES shapes(shape_id),
        amt INTEGER NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
-       PRIMARY KEY (delivery_date, customer_id, dough_id, shape_id, created),
+       PRIMARY KEY (delivery_date, customer_id, product_id, shape_id, created),
        FOREIGN KEY (customer_id, io) references parties (party_id, party_type),
        CONSTRAINT io_i_or_o CHECK (io in ('i', 'o')),
        CONSTRAINT delivery_date_present_or_future CHECK (delivery_date >= now()::date),
@@ -374,12 +379,12 @@ CREATE TABLE standing_orders (
        day_of_week SMALLINT NOT NULL REFERENCES days_of_week(dow_id),
        customer_id uuid NOT NULL,
        io text NOT NULL,
-       dough_id uuid NOT NULL REFERENCES doughs(dough_id),
+       product_id uuid NOT NULL REFERENCES products(product_id),
        shape_id uuid NOT NULL REFERENCES shapes(shape_id),
        amt INTEGER NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
-       PRIMARY KEY (day_of_week, customer_id, dough_id, shape_id),
+       PRIMARY KEY (day_of_week, customer_id, product_id, shape_id),
        FOREIGN KEY (customer_id, io) 
                     references parties (party_id, party_type),
        CONSTRAINT dow_in_0_thru_6 check (day_of_week IN (0, 1, 2, 3, 4, 5, 6)),
@@ -393,12 +398,12 @@ CREATE TABLE standing_change_log (
        new_day_of_week SMALLINT NOT NULL REFERENCES days_of_week(dow_id),
        customer_id uuid NOT NULL,
        io text NOT NULL,
-       dough_id uuid NOT NULL REFERENCES doughs(dough_id),
+       product_id uuid NOT NULL REFERENCES products(product_id),
        shape_id uuid NOT NULL REFERENCES shapes(shape_id),
        old_amt INTEGER NOT NULL,
        new_amt INTEGER NOT NULL,
        change_time TIMESTAMPTZ DEFAULT now(),
-       PRIMARY KEY (new_day_of_week, customer_id, dough_id, shape_id, change_time),
+       PRIMARY KEY (new_day_of_week, customer_id, product_id, shape_id, change_time),
        FOREIGN KEY (customer_id, io) 
                     references parties (party_id, party_type),
        CONSTRAINT dow_in_0_thru_6 check (new_day_of_week IN (0, 1, 2, 3, 4, 5, 6)),
@@ -415,7 +420,7 @@ CREATE OR REPLACE FUNCTION record_if_amt_changed()
             new_day_of_week,
             customer_id,
             io,
-            dough_id,
+            product_id,
             shape_id,
             old_amt,
             new_amt,
@@ -425,7 +430,7 @@ CREATE OR REPLACE FUNCTION record_if_amt_changed()
             NEW.day_of_week,
             OLD.customer_id,
             OLD.io,
-            OLD.dough_id,
+            OLD.product_id,
             OLD.shape_id,
             OLD.amt,
             NEW.amt,
@@ -446,7 +451,7 @@ CREATE TRIGGER amt_update
 CREATE TABLE tmp_chng (
        day_of_week SMALLINT NOT NULL,
        customer_id uuid NOT NULL,
-       dough_id uuid NOT NULL REFERENCES doughs(dough_id),
+       product_id uuid NOT NULL REFERENCES products(product_id),
        shape_id uuid NOT NULL REFERENCES shapes(shape_id),
        start_date DATE NOT NULL,
        resume_date DATE,
@@ -454,9 +459,9 @@ CREATE TABLE tmp_chng (
        percent_multiplier numeric(4,1) NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
-       PRIMARY KEY (day_of_week, customer_id, dough_id, shape_id, start_date),
-       FOREIGN KEY (day_of_week, customer_id, dough_id, shape_id)
-               REFERENCES standing_orders (day_of_week, customer_id, dough_id, shape_id),
+       PRIMARY KEY (day_of_week, customer_id, product_id, shape_id, start_date),
+       FOREIGN KEY (day_of_week, customer_id, product_id, shape_id)
+               REFERENCES standing_orders (day_of_week, customer_id, product_id, shape_id),
        CONSTRAINT dow_in_0_thru_6 check (day_of_week IN (0, 1, 2, 3, 4, 5, 6)),
        CONSTRAINT start_date_in_next_6_mos CHECK (start_date >= now()::date AND 
                   start_date < now()::date + interval '6 months'),
@@ -554,10 +559,11 @@ SELECT pe.party_id, pe.first_name, p.party_name AS last_name
 ;
 
 CREATE OR REPLACE VIEW shape_list AS 
-SELECT d.dough_name AS dough, s.shape_name AS shape, 
-       ds_grams AS grams FROM dough_shapes as dsw
-  JOIN doughs AS d on dsw.dough_id = d.dough_id
-  Join shapes as s on dsw.shape_id = s.shape_id;
+SELECT pr.product_name AS product, s.shape_name AS shape, 
+       ps.grams
+  FROM product_shapes as ps
+  JOIN products AS pr on ps.product_id = pr.product_id
+  Join shapes as s on ps.shape_id = s.shape_id;
 
 
 CREATE OR REPLACE VIEW ein_list AS 
@@ -567,71 +573,71 @@ SELECT p.party_name as name, ei.ein FROM ein_numbs AS ei
 
 
 CREATE OR REPLACE VIEW todays_orders AS 
-SELECT d.dough_id, p.party_name AS customer, so.delivery_date, 
-       d.lead_time_days AS lead_time, so.amt, 
-       d.dough_name, s.shape_name, dsw.ds_grams AS grams
+SELECT pr.product_id, p.party_name AS customer, so.delivery_date, 
+       pr.lead_time_days AS lead_time, so.amt, 
+       pr.product_name, s.shape_name, ps.grams AS grams
     
-  FROM dough_shapes AS dsw 
-  JOIN doughs AS d ON d.dough_id = dsw.dough_id
-  JOIN shapes AS s ON s.shape_id = dsw.shape_id
-  JOIN special_orders as so ON so.dough_id = dsw.dough_id
+  FROM product_shapes AS ps 
+  JOIN products AS pr ON pr.product_id = ps.product_id
+  JOIN shapes AS s ON s.shape_id = ps.shape_id
+  JOIN special_orders as so ON so.product_id = ps.product_id
        AND s.shape_id = so.shape_id
   JOIN parties AS p on so.customer_id = p.party_id 
        AND so.io = p.party_type
- WHERE now()::date + d.lead_time_days = so.delivery_date;
+ WHERE now()::date + pr.lead_time_days = so.delivery_date;
 
 CREATE OR REPLACE VIEW todays_order_summary AS 
-SELECT dough_id, dough_name, sum(amt * grams) AS total_grams
+SELECT product_id, product_name, sum(amt * grams) AS total_grams
   FROM todays_orders
- GROUP BY dough_name, dough_id
- ORDER BY dough_id;
+ GROUP BY product_name, product_id
+ ORDER BY product_id;
 
 
 CREATE OR REPLACE VIEW todays_adjusted_so AS
 WITH
-   current_so_changes (dow, cid, did, sid, pm)
+   current_so_changes (dow, cid, prid, sid, pm)
   AS
 (
-    SELECT tc.day_of_week, tc.customer_id, tc.dough_id, tc.shape_id, tc.percent_multiplier
+    SELECT tc.day_of_week, tc.customer_id, tc.product_id, tc.shape_id, tc.percent_multiplier
     FROM tmp_chng AS tc
-    JOIN doughs as d ON tc.dough_id = d.dough_id
-    WHERE tc.start_date - d.lead_time_days <= TIMESTAMP 'now()'::date
-          AND tc.resume_date - d.lead_time_days > TIMESTAMP 'now()'::date
+    JOIN products as pr ON tc.product_id = pr.product_id
+    WHERE tc.start_date - pr.lead_time_days <= TIMESTAMP 'now()'::date
+          AND tc.resume_date - pr.lead_time_days > TIMESTAMP 'now()'::date
 )
 
-SELECT so.day_of_week as dow, so.customer_id as cid, so.dough_id as did, d.dough_name, so.shape_id as sid,
-       COALESCE(round(so.amt * csc.pm / 100, 0), so.amt) AS amt, ds.ds_grams as grams
+SELECT so.day_of_week as dow, so.customer_id as cid, so.product_id as prid, pr.product_name, so.shape_id as sid,
+       COALESCE(round(so.amt * csc.pm / 100, 0), so.amt) AS amt, ps.grams as grams
   FROM standing_orders as so
   LEFT JOIN current_so_changes as csc
        ON so.day_of_week = csc.dow AND so.customer_id = csc.cid
-       AND so.dough_id = csc.did AND so.shape_id = csc.sid
-  JOIN doughs as d on so.dough_id = d.dough_id
-  JOIN dough_shapes as ds ON so.dough_id = ds.dough_id AND so.shape_id = ds.shape_id
+       AND so.product_id = csc.prid AND so.shape_id = csc.sid
+  JOIN products as pr on so.product_id = pr.product_id
+  JOIN product_shapes as ps ON so.product_id = ps.product_id AND so.shape_id = ps.shape_id
  WHERE 
-       so.day_of_week = (SELECT EXTRACT(DOW FROM TIMESTAMP 'now()')) + d.lead_time_days 
+       so.day_of_week = (SELECT EXTRACT(DOW FROM TIMESTAMP 'now()')) + pr.lead_time_days 
        OR
-       so.day_of_week + 7 = (SELECT EXTRACT(DOW FROM TIMESTAMP 'now()')) + d.lead_time_days
+       so.day_of_week + 7 = (SELECT EXTRACT(DOW FROM TIMESTAMP 'now()')) + pr.lead_time_days
 ;
 
 --used by get_batch_weight function, which is called by formula function
 CREATE OR REPLACE VIEW todays_combined_spec_standing AS
 WITH
-    spec (dow, cid, did, dough_name, sid, amt, grams)
+    spec (dow, cid, prid, product_name, sid, amt, grams)
 AS
     (
-SELECT date_part('dow', so.delivery_date), so.customer_id, so.dough_id, d.dough_name,
-       so.shape_id, so.amt, ds.ds_grams
+SELECT date_part('dow', so.delivery_date), so.customer_id, so.product_id, pr.product_name,
+       so.shape_id, so.amt, ps.grams
   FROM special_orders AS so
-  JOIN dough_shapes as ds ON so.dough_id = ds.dough_id AND so.shape_id = ds.shape_id
-  JOIN doughs as d ON so.dough_id = d.dough_id
- WHERE now()::date + d.lead_time_days = so.delivery_date
+  JOIN product_shapes as ps ON so.product_id = ps.product_id AND so.shape_id = ps.shape_id
+  JOIN products as pr ON so.product_id = pr.product_id
+ WHERE now()::date + pr.lead_time_days = so.delivery_date
    )
 
-SELECT dow, cid, did, dough_name, 
+SELECT dow, cid, prid, product_name, 
        sid, amt, grams
   FROM todays_adjusted_so
  UNION ALL
-SELECT dow, cid, did, dough_name, sid, amt, grams
+SELECT dow, cid, prid, product_name, sid, amt, grams
   FROM spec
 ;
 
@@ -640,27 +646,27 @@ get_batch_weight(which_dough VARCHAR)
 RETURNS numeric AS
 'SELECT (SELECT COALESCE (sum(amt * grams), 0)
    FROM todays_combined_spec_standing
-  WHERE LOWER(dough_name) LIKE LOWER(which_dough))
+  WHERE LOWER(product_name) LIKE LOWER(which_dough))
 ;'
 LANGUAGE SQL
 IMMUTABLE
 RETURNS NULL ON NULL INPUT;
 
 CREATE OR REPLACE VIEW dough_info AS 
-SELECT di.dough_id, d.dough_name, di.bakers_percent, i.ingredient_name AS ingredient, 
+SELECT di.product_id, pr.product_name, di.bakers_percent, i.ingredient_name AS ingredient, 
        i.is_flour, di.percent_in_sour, di.percent_in_poolish, di.percent_in_soaker
-  FROM dough_ingredients AS di
+  FROM product_ingredients AS di
   JOIN ingredients AS i ON di.ingredient_id = i.ingredient_id
-  JOIN doughs as d on di.dough_id = d.dough_id
- ORDER BY di.dough_id, i.is_flour DESC, di.bakers_percent DESC;
+  JOIN products as pr on di.product_id = pr.product_id
+ ORDER BY di.product_id, i.is_flour DESC, di.bakers_percent DESC;
 
 
 CREATE OR REPLACE VIEW standing_change_history AS
-SELECT p.party_name, d.dough_name, s.shape_name, dw.dow_names AS day_of_week,
+SELECT p.party_name, pr.product_name, s.shape_name, dw.dow_names AS day_of_week,
        sc.old_amt, sc.new_amt, sc.change_time
   FROM standing_change_log as sc
   JOIN parties as p on sc.customer_id = p.party_id AND sc.io = p.party_type
-  JOIN doughs as d ON sc.dough_id = d.dough_id
+  JOIN products as pr ON sc.product_id = pr.product_id
   JOIN shapes AS s on sc.shape_id = s.shape_id
   JOIN days_of_week AS dw on sc.old_day_of_week = dw.dow_id;
 
@@ -683,15 +689,15 @@ SELECT i.ingredient_id, i.ingredient_name, ROUND(ic.cost, 2) AS cost, ic.grams,
 
 
 CREATE OR REPLACE VIEW total_bp AS
-SELECT DISTINCT dough_name, sum(bakers_percent) OVER 
-       (partition by dough_name) AS total_bp
+SELECT DISTINCT product_name, sum(bakers_percent) OVER 
+       (partition by product_name) AS total_bp
   FROM dough_info;
 
 --called by formula function
 CREATE OR REPLACE FUNCTION bak_per(which_doe VARCHAR)
   returns numeric AS
-          'SELECT DISTINCT sum(bakers_percent) OVER (PARTITION BY dough_id)
-          FROM dough_info WHERE LOWER(dough_name) LIKE LOWER(which_doe);'
+          'SELECT DISTINCT sum(bakers_percent) OVER (PARTITION BY product_id)
+          FROM dough_info WHERE LOWER(product_name) LIKE LOWER(which_doe);'
  LANGUAGE SQL
 IMMUTABLE
   RETURNS NULL ON NULL INPUT;
@@ -706,10 +712,10 @@ IMMUTABLE
   RETURNS NULL ON NULL INPUT;
 
 
-CREATE OR REPLACE FUNCTION did(d_name VARCHAR)
+CREATE OR REPLACE FUNCTION prid(d_name VARCHAR)
   returns uuid AS
-          'SELECT dough_id FROM doughs
-          WHERE LOWER(dough_name) LIKE LOWER(d_name);'
+          'SELECT product_id FROM products
+          WHERE LOWER(product_name) LIKE LOWER(d_name);'
  LANGUAGE SQL
 IMMUTABLE
   RETURNS NULL ON NULL INPUT;
@@ -739,16 +745,16 @@ CREATE OR REPLACE FUNCTION bak_per2(which_doe VARCHAR, mod VARCHAR)
 
           'SELECT (SELECT SUM(dm.bakers_percent) 
            FROM dough_mods AS dm
-           JOIN doughs AS d on dm.dough_id = d.dough_id
-           WHERE LOWER(d.dough_name) LIKE LOWER(which_doe)) +
+           JOIN products as pr on dm.product_id = pr.product_id
+           WHERE LOWER(pr.product_name) LIKE LOWER(which_doe)) +
            (SELECT SUM(di.bakers_percent)
-           FROM dough_ingredients AS di
-           JOIN doughs as d on di.dough_id = d.dough_id
-           WHERE LOWER(d.dough_name) LIKE LOWER(which_doe)
+           FROM product_ingredients AS di
+           JOIN products as pr on di.product_id = pr.product_id
+           WHERE LOWER(pr.product_name) LIKE LOWER(which_doe)
            AND di.ingredient_id NOT IN (SELECT ingredient_id 
            FROM dough_mods AS dm
-           JOIN doughs AS d on dm.dough_id = d.dough_id
-           WHERE LOWER(d.dough_name) LIKE LOWER(which_doe) 
+           JOIN products as pr on dm.product_id = pr.product_id
+           WHERE LOWER(pr.product_name) LIKE LOWER(which_doe) 
            AND LOWER(mod_name) LIKE LOWER(mod)));'
 
 LANGUAGE SQL
@@ -757,25 +763,25 @@ IMMUTABLE
 
 
 --usage: SELECT "%", ingredient, overall, sour, poolish, soaker, final FROM formula('kam%');
-CREATE OR REPLACE FUNCTION formula(my_dough VARCHAR)
+CREATE OR REPLACE FUNCTION formula(my_product VARCHAR)
        RETURNS TABLE (dough character varying, "%" numeric, ingredient character varying,
        overall numeric, sour numeric, poolish numeric, soaker numeric, final numeric) AS $$
        BEGIN
              RETURN QUERY
-                    SELECT din.dough_name, din.bakers_percent, din.ingredient,
-                    ROUND(get_batch_weight(my_dough) * din.bakers_percent /
-                          bak_per(my_dough), 0),
-                    ROUND(get_batch_weight(my_dough) * din.bakers_percent /
-                          bak_per(my_dough) * din.percent_in_sour /100, 0),
-                    ROUND(get_batch_weight(my_dough) * din.bakers_percent /
-                          bak_per(my_dough) * din.percent_in_poolish /100, 1),
-                    ROUND(get_batch_weight(my_dough) * din.bakers_percent /
-                          bak_per(my_dough) * din.percent_in_soaker /100, 0),
-                    ROUND(get_batch_weight(my_dough) * din.bakers_percent /
-                          bak_per(my_dough) * (1- (din.percent_in_sour + 
+                    SELECT din.product_name, din.bakers_percent, din.ingredient,
+                    ROUND(get_batch_weight(my_product) * din.bakers_percent /
+                          bak_per(my_product), 0),
+                    ROUND(get_batch_weight(my_product) * din.bakers_percent /
+                          bak_per(my_product) * din.percent_in_sour /100, 0),
+                    ROUND(get_batch_weight(my_product) * din.bakers_percent /
+                          bak_per(my_product) * din.percent_in_poolish /100, 1),
+                    ROUND(get_batch_weight(my_product) * din.bakers_percent /
+                          bak_per(my_product) * din.percent_in_soaker /100, 0),
+                    ROUND(get_batch_weight(my_product) * din.bakers_percent /
+                          bak_per(my_product) * (1- (din.percent_in_sour + 
                           din.percent_in_poolish + din.percent_in_soaker)/100), 0)
                     FROM dough_info AS din
-                    WHERE LOWER(din.dough_name) LIKE LOWER(my_dough);
+                    WHERE LOWER(din.product_name) LIKE LOWER(my_product);
       END;
 $$ LANGUAGE plpgsql;
 
@@ -786,26 +792,26 @@ CREATE OR REPLACE FUNCTION modded_formula(get_dough VARCHAR, get_mod VARCHAR)
        BEGIN
              RETURN QUERY
             WITH dmu (
-                dough_name, dough_id, ingredient_id, ingredient_name, is_flour, bakers_percent,
+                product_name, product_id, ingredient_id, ingredient_name, is_flour, bakers_percent,
                 percent_in_sour, percent_in_poolish, percent_in_soaker
                 ) AS 
-            (SELECT d.dough_name, dm.dough_id, dm.ingredient_id, i.ingredient_name, i.is_flour, dm.bakers_percent, 
+            (SELECT pr.product_name, dm.product_id, dm.ingredient_id, i.ingredient_name, i.is_flour, dm.bakers_percent, 
             dm.percent_in_sour, dm.percent_in_poolish, dm.percent_in_soaker
 FROM dough_mods as dm 
 JOIN ingredients as i on dm.ingredient_id = i.ingredient_id
-JOIN doughs as d on dm.dough_id = d.dough_id
-     WHERE LOWER(dm.mod_name) LIKE LOWER(get_mod) AND LOWER(d.dough_name) LIKE LOWER(get_dough)
+JOIN products as pr on dm.product_id = pr.product_id
+     WHERE LOWER(dm.mod_name) LIKE LOWER(get_mod) AND LOWER(pr.product_name) LIKE LOWER(get_dough)
      UNION ALL
-SELECT d.dough_name, di.dough_id, di.ingredient_id, i.ingredient_name, i.is_flour, di.bakers_percent, 
+SELECT pr.product_name, di.product_id, di.ingredient_id, i.ingredient_name, i.is_flour, di.bakers_percent, 
              di.percent_in_sour, di.percent_in_poolish, di.percent_in_soaker
-FROM dough_ingredients as di 
+FROM product_ingredients as di 
 JOIN ingredients as i on di.ingredient_id = i.ingredient_id
-JOIN doughs as d on di.dough_id = d.dough_id
-WHERE LOWER(d.dough_name) LIKE LOWER(get_dough)
+JOIN products as pr on di.product_id = pr.product_id
+WHERE LOWER(pr.product_name) LIKE LOWER(get_dough)
 AND di.ingredient_id NOT IN (SELECT ingredient_id FROM dough_mods)
 ORDER BY is_flour DESC, bakers_percent DESC)
 
-                    SELECT dough_name, bakers_percent, ingredient_name,
+                    SELECT product_name, bakers_percent, ingredient_name,
                     ROUND(get_batch_weight(get_dough) * bakers_percent /
                           bak_per2(get_dough, get_mod), 0),
                     ROUND(get_batch_weight(get_dough) * bakers_percent /
@@ -818,26 +824,26 @@ ORDER BY is_flour DESC, bakers_percent DESC)
                           bak_per2(get_dough, get_mod) * (1- (percent_in_sour + 
                           percent_in_poolish + percent_in_soaker)/100), 0)
                     FROM dmu
-                    WHERE LOWER(dough_name) LIKE LOWER(get_dough)
+                    WHERE LOWER(product_name) LIKE LOWER(get_dough)
                     ;
       END;
 $$ LANGUAGE plpgsql;
 
 --usage: SELECT dough, ingredient, grams, cost From cost_form('rug%');
 --usage: SELECT sum(grams) AS grams, sum(cost) AS cost, ROUND(sum(cost) / sum(grams),4) AS cost_per_gram FROM cost_form('rug%');
-CREATE OR REPLACE FUNCTION cost_form(my_dough VARCHAR)
+CREATE OR REPLACE FUNCTION cost_form(my_product VARCHAR)
        RETURNS TABLE (dough character varying, ingredient character varying,
        grams NUMERIC, cost numeric) AS $$
        BEGIN
              RETURN QUERY
-                    SELECT din.dough_name, din.ingredient,
-                    ROUND(get_batch_weight(my_dough) * din.bakers_percent /
-                          bak_per(my_dough), 0),
-                    ROUND(get_batch_weight(my_dough) * din.bakers_percent /
-                          bak_per(my_dough), 0) * cl.cost_per_g AS item_cost
+                    SELECT din.product_name, din.ingredient,
+                    ROUND(get_batch_weight(my_product) * din.bakers_percent /
+                          bak_per(my_product), 0),
+                    ROUND(get_batch_weight(my_product) * din.bakers_percent /
+                          bak_per(my_product), 0) * cl.cost_per_g AS item_cost
                     FROM dough_info AS din
                     JOIN cost_list as cl on din.ingredient = cl.ingredient_name
-                    WHERE LOWER(din.dough_name) LIKE LOWER(my_dough);
+                    WHERE LOWER(din.product_name) LIKE LOWER(my_product);
       END;
 $$ LANGUAGE plpgsql;
 
@@ -896,7 +902,7 @@ CREATE TRIGGER update_ingredients_modtime BEFORE UPDATE ON ingredients
 CREATE TRIGGER update_ingredient_costs_modtime BEFORE UPDATE ON ingredient_costs
    FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 
-CREATE TRIGGER update_d_ingredients_modtime BEFORE UPDATE ON dough_ingredients
+CREATE TRIGGER update_d_ingredients_modtime BEFORE UPDATE ON product_ingredients
    FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
 
 CREATE TRIGGER update_dough_mods_modtime BEFORE UPDATE ON dough_mods
@@ -942,19 +948,21 @@ INSERT INTO shapes (shape_name)
             ('walter 25'),
             ('16" pizza'),
             ('baguette'),
+            ('truffle'),
             ('7" pita'),
             ('hard rolls')
 ;
 
-            --doughs
-INSERT INTO doughs (dough_name, lead_time_days)
-     VALUES ('cranberry walnut', 2),
-            ('pizza dough', 1),
-            ('five day', 5),
-            ('goji almond nyt', 2),
-            ('rugbrod', 2),
-            ('kamut sourdough', 2),
-            ('pita bread', 1)
+            --products
+INSERT INTO products (product_name, lead_time_days, is_dough)
+     VALUES ('cranberry walnut', 2, TRUE),
+            ('pizza dough', 1, TRUE),
+            ('five day', 5, TRUE),
+            ('goji almond nyt', 2, TRUE),
+            ('rugbrod', 2, TRUE),
+            ('cao cao almond chocolate', 0, FALSE),
+            ('kamut sourdough', 2, TRUE),
+            ('pita bread', 1, TRUE)
 ;
 
             --ingredients (use lower case)
@@ -985,6 +993,13 @@ INSERT INTO ingredients (ingredient_name, is_flour)
             ('kefir whey', FALSE),
             ('chia seeds', FALSE),
             ('goji berries', FALSE),
+            ('dates', FALSE),
+            ('cardamom', FALSE),
+            ('ceylon cinnamon', FALSE),
+            ('monk fruit extract', FALSE),
+            ('red boat salt', FALSE),
+            ('coconut oil', FALSE),
+            ('raw cao cao powder', FALSE),
             ('pumpkin seeds', FALSE)
 ;
 
@@ -1017,6 +1032,11 @@ INSERT INTO ingredient_costs (ingredient_id, maker_id, mio, seller_id, sio, cost
             (iid('sunflower seeds'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 10.95, 907),
             (iid('chia seeds'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 10.75, 1134),
             (iid('goji berries'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 13.85, 454),
+            (iid('coconut oil'), pid('Viva Naturals'), 'o', pid('Amazon'), 'o', 13.22, 473),
+            (iid('cardamom'), pid('Rani Brands'), 'o', pid('Amazon'), 'o', 13.99, 100),
+            (iid('red boat salt'), pid('Red Boat'), 'o', pid('Amazon'), 'o', 19.95, 250),
+            (iid('monk fruit extract'), pid('Now'), 'o', pid('Amazon'), 'o', 11.43, 59),
+            (iid('ceylon cinnamon'), pid('Ceylon Flavors'), 'o', pid('Amazon'), 'o', 10.99, 99),
             (iid('pumpkin seeds'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 13.75, 907)
 ;
 
@@ -1053,111 +1073,123 @@ VALUES (pid('Blow'), 'p', 'bubba@gmail.com'),
 ;
 
 
-            --dough_shapes (use lower case)
-INSERT INTO dough_shapes (dough_id, shape_id, ds_grams)
-     VALUES (did('kamut sourdough'), sid('12" boule'), 1600),
-            (did('rugbrod'), sid('walter 25'), 1200),
-            (did('pita bread'), sid('7" pita'), 105),
-            (did('goji almond nyt'), sid('12" boule'), 1600),
-            (did('five%'), sid('12" boule'), 1600),
-            (did('cranberry walnut'), sid('12" boule'), 1600),
-            (did('cranberry walnut'), sid('hard rolls'), 120),
-            (did('pizza dough'), sid('16" pizza'), 400)
+            --product_shapes (use lower case)
+INSERT INTO product_shapes (product_id, shape_id, grams)
+     VALUES (prid('kamut sourdough'), sid('12" boule'), 1600),
+            (prid('rugbrod'), sid('walter 25'), 1200),
+            (prid('pita bread'), sid('7" pita'), 105),
+            (prid('goji almond nyt'), sid('12" boule'), 1600),
+            (prid('five%'), sid('12" boule'), 1600),
+            (prid('cao cao%'), sid('truffle'), 24),
+            (prid('cranberry walnut'), sid('12" boule'), 1600),
+            (prid('cranberry walnut'), sid('hard rolls'), 120),
+            (prid('pizza dough'), sid('16" pizza'), 400)
 ;
 
-            --dough_ingredients(use lower case)
-INSERT INTO dough_ingredients (dough_id, ingredient_id, bakers_percent,
+            --product_ingredients(use lower case)
+INSERT INTO product_ingredients (product_id, ingredient_id, bakers_percent,
             percent_in_sour, percent_in_poolish, percent_in_soaker)
-     VALUES (did('kamut sourdough'), iid('kamut flour'), 50, 0, 0, 20),
-            (did('kamut sourdough'), iid('all purpose flour'), 20, 33, 0, 0),
-            (did('kamut sourdough'), iid('high extraction flour'), 30, 33, 0, 20),
-            (did('kamut sourdough'), iid('water'), 80, 20, 0, 18),
-            (did('kamut sourdough'), iid('sea salt'), 1.9, 0, 0, 0),
-            (did('cranberry walnut'), iid('kamut flour'), 40, 0, 0, 20),
-            (did('cranberry walnut'), iid('all purpose flour'), 20, 36, 0, 0),
-            (did('cranberry walnut'), iid('high extraction flour'), 40, 36, 0, 20),
-            (did('cranberry walnut'), iid('water'), 70, 22, 0, 18),
-            (did('cranberry walnut'), iid('sea salt'), 2.0, 0, 0, 0),
-            (did('cranberry walnut'), iid('dried cranberries'), 25, 0, 0, 0),
-            (did('cranberry walnut'), iid('walnuts'), 25, 0, 0, 0),
-            (did('goji almond nyt'), iid('kamut flour'), 45, 0, 0, 40),
-            (did('goji almond nyt'), iid('rye flour'), 10, 0, 0, 0),
-            (did('goji almond nyt'), iid('high extraction flour'), 45, 12, 0, 28),
-            (did('goji almond nyt'), iid('water'), 75, 5.4, 0, 30.6),
-            (did('goji almond nyt'), iid('sea salt'), 2.0, 0, 0, 0),
-            (did('goji almond nyt'), iid('goji berries'), 25, 0, 0, 0),
-            (did('goji almond nyt'), iid('almonds'), 25, 0, 0, 0),
-            (did('pita bread'), iid('bolted red fife flour'), 50, 0, 0, 0),
-            (did('pita bread'), iid('all purpose flour'), 50, 5.4, 0, 0),
-            (did('pita bread'), iid('water'), 64, 2.4, 0, 0),
-            (did('pita bread'), iid('sea salt'), 1.9, 0, 0, 0),
-            (did('pizza dough'), iid('bread flour'), 30, 0, 25, 0),
-            (did('pizza dough'), iid('kamut flour'), 40, 0, 0, 0),
-            (did('pizza dough'), iid('high extraction flour'), 30, 0, 0, 0),
-            (did('pizza dough'), iid('water'), 68, 0, 20, 0),
-            (did('pizza dough'), iid('sea salt'), 1.9, 0, 0, 0),
-            (did('pizza dough'), iid('saf-instant yeast'), .05, 0, 100, 0),
-            (did('rugbrod'), iid('rye flour'), 100, 27.3, 0, 0),
-            (did('rugbrod'), iid('water'), 103.6, 43.9, 0, 56.1),
-            (did('rugbrod'), iid('sunflower seeds'), 7.3, 0, 0, 100),
-            (did('rugbrod'), iid('black sesame seeds'), 5.4, 0, 0, 100),
-            (did('rugbrod'), iid('whole flax seeds'), 5.4, 0, 0, 100),
-            (did('rugbrod'), iid('chia seeds'), 3.64, 0, 0, 100),
-            (did('rugbrod'), iid('pumpkin seeds'), 36.4, 0, 0, 100),
-            (did('rugbrod'), iid('ground flax seeds'), 6.36, 0, 0, 0),
-            (did('rugbrod'), iid('sprouted spelt berries'), 26.4, 0, 0, 0),
-            (did('rugbrod'), iid('kefir whey'), 40, 0, 0, 0),
-            (did('rugbrod'), iid('sea salt'), 3.64, 0, 0, 0)
+     VALUES (prid('kamut sourdough'), iid('kamut flour'), 50, 0, 0, 20),
+            (prid('kamut sourdough'), iid('all purpose flour'), 20, 33, 0, 0),
+            (prid('kamut sourdough'), iid('high extraction flour'), 30, 33, 0, 20),
+            (prid('kamut sourdough'), iid('water'), 80, 20, 0, 18),
+            (prid('kamut sourdough'), iid('sea salt'), 1.9, 0, 0, 0),
+            (prid('cranberry walnut'), iid('kamut flour'), 40, 0, 0, 20),
+            (prid('cranberry walnut'), iid('all purpose flour'), 20, 36, 0, 0),
+            (prid('cranberry walnut'), iid('high extraction flour'), 40, 36, 0, 20),
+            (prid('cranberry walnut'), iid('water'), 70, 22, 0, 18),
+            (prid('cranberry walnut'), iid('sea salt'), 2.0, 0, 0, 0),
+            (prid('cranberry walnut'), iid('dried cranberries'), 25, 0, 0, 0),
+            (prid('cranberry walnut'), iid('walnuts'), 25, 0, 0, 0),
+            (prid('goji almond nyt'), iid('kamut flour'), 45, 0, 0, 40),
+            (prid('goji almond nyt'), iid('rye flour'), 10, 0, 0, 0),
+            (prid('goji almond nyt'), iid('high extraction flour'), 45, 12, 0, 28),
+            (prid('goji almond nyt'), iid('water'), 75, 5.4, 0, 30.6),
+            (prid('goji almond nyt'), iid('sea salt'), 2.0, 0, 0, 0),
+            (prid('goji almond nyt'), iid('goji berries'), 25, 0, 0, 0),
+            (prid('goji almond nyt'), iid('almonds'), 25, 0, 0, 0),
+            (prid('pita bread'), iid('bolted red fife flour'), 50, 0, 0, 0),
+            (prid('pita bread'), iid('all purpose flour'), 50, 5.4, 0, 0),
+            (prid('pita bread'), iid('water'), 64, 2.4, 0, 0),
+            (prid('pita bread'), iid('sea salt'), 1.9, 0, 0, 0),
+            (prid('cao%'), iid('raw cao cao powder'), 100, 0, 0, 0),
+            (prid('cao%'), iid('coconut oil'), 66.7, 0, 0, 0),
+            (prid('cao%'), iid('dates'), 53.3, 0, 0, 0),
+            (prid('cao%'), iid('almonds'), 33.3, 0, 0, 0),
+            (prid('cao%'), iid('pumpkin seeds'), 33.3, 0, 0, 0),
+            (prid('cao%'), iid('goji berries'), 13.3, 0, 0, 0),
+            (prid('cao%'), iid('ceylon cinnamon'), 2.7, 0, 0, 0),
+            (prid('cao%'), iid('sea salt'), 1.3, 0, 0, 0),
+            (prid('cao%'), iid('red boat salt'), 1.3, 0, 0, 0),
+            (prid('cao%'), iid('cardamom'), 0.67, 0, 0, 0),
+            (prid('cao%'), iid('monk fruit extract'), 0.43, 0, 0, 0),
+            (prid('pizza dough'), iid('bread flour'), 30, 0, 25, 0),
+            (prid('pizza dough'), iid('kamut flour'), 40, 0, 0, 0),
+            (prid('pizza dough'), iid('high extraction flour'), 30, 0, 0, 0),
+            (prid('pizza dough'), iid('water'), 68, 0, 20, 0),
+            (prid('pizza dough'), iid('sea salt'), 1.9, 0, 0, 0),
+            (prid('pizza dough'), iid('saf-instant yeast'), .05, 0, 100, 0),
+            (prid('rugbrod'), iid('rye flour'), 100, 27.3, 0, 0),
+            (prid('rugbrod'), iid('water'), 103.6, 43.9, 0, 18),
+            (prid('rugbrod'), iid('sunflower seeds'), 7.3, 0, 0, 100),
+            (prid('rugbrod'), iid('black sesame seeds'), 5.4, 0, 0, 100),
+            (prid('rugbrod'), iid('whole flax seeds'), 5.4, 0, 0, 100),
+            (prid('rugbrod'), iid('chia seeds'), 3.64, 0, 0, 100),
+            (prid('rugbrod'), iid('pumpkin seeds'), 36.4, 0, 0, 100),
+            (prid('rugbrod'), iid('ground flax seeds'), 6.36, 0, 0, 0),
+            (prid('rugbrod'), iid('sprouted spelt berries'), 26.4, 0, 0, 0),
+            (prid('rugbrod'), iid('kefir whey'), 40, 0, 0, 100),
+            (prid('rugbrod'), iid('sea salt'), 3.64, 0, 0, 0)
 ;
 
 
 --any ingredient in this table will supercede dough_ingredient values
 --otherwise, all dough_ingredient values will be used
-INSERT INTO dough_mods (mod_name, dough_id, ingredient_id, bakers_percent,
+INSERT INTO dough_mods (mod_name, product_id, ingredient_id, bakers_percent,
        percent_in_sour, percent_in_poolish, percent_in_soaker)
-       VALUES ('cranberry', did('kamut sourdough'), iid('dried cranberries'), 20, 0, 0, 0),
-              ('cranberry', did('kamut sourdough'), iid('water'), 75, 20, 0, 18),
-              ('cranberry', did('kamut sourdough'), iid('sea salt'), 2.0, 0, 0, 0)
+       VALUES ('cranberry', prid('kamut sourdough'), iid('dried cranberries'), 20, 0, 0, 0),
+              ('cranberry', prid('kamut sourdough'), iid('water'), 75, 20, 0, 18),
+              ('cranberry', prid('kamut sourdough'), iid('sea salt'), 2.0, 0, 0, 0)
 ;
 
             --special_orders
-INSERT INTO special_orders (delivery_date, customer_id, io, dough_id,
+INSERT INTO special_orders (delivery_date, customer_id, io, product_id,
             shape_id, amt, modified)
        VALUES 
         --goji almond
-            --((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', did('goji%'), 
+            --((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', prid('goji%'), 
                 --sid('12" boule'), 1, (SELECT now())),
 
         --five
-            ((SELECT now()::date + interval '5 days'), pid('Blow'), 'i', did('five%'), 
+            ((SELECT now()::date + interval '5 days'), pid('Blow'), 'i', prid('five%'), 
                 sid('12" boule'), 1, (SELECT now())),
 
         --kamut
-            ((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', did('kamut sourdough'), 
+            ((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', prid('kamut sourdough'), 
                 sid('12" boule'), 1, (SELECT now())),
 
         --pizza
-            ((SELECT now()::date + interval '1 day'), pid('Blow'), 'i', did('pizza dough'), 
+            ((SELECT now()::date + interval '1 day'), pid('Blow'), 'i', prid('pizza dough'), 
                 sid('16" pizza'), 6, (SELECT now())),
 
         --pita bread
-            ((SELECT now()::date + interval '1 day'), pid('Blow'), 'i', did('pita bread'), 
+            ((SELECT now()::date + interval '1 day'), pid('Blow'), 'i', prid('pita bread'), 
                 sid('7" pita'), 8, (SELECT now())),
 
         --pita bread
-            ((SELECT now()::date + interval '1 day'), pid('Bar'), 'i', did('pita bread'), 
+            ((SELECT now()::date + interval '1 day'), pid('Bar'), 'i', prid('pita bread'), 
                 sid('7" pita'), 4, (SELECT now())),
         
         --rugbrod
-            --((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', did('rugbrod'), 
+            --((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', prid('rugbrod'), 
                 --sid('walter 25'), 2, (SELECT now())),
 
         --cranberry walnut
-            ((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', did('cranberry walnut'), 
+            ((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', prid('cranberry walnut'), 
                 sid('hard rolls'), 4, (SELECT now())),
         
         --cranberry walnut
-            ((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', did('cranberry walnut'), 
+            ((SELECT now()::date + interval '2 days'), pid('Blow'), 'i', prid('cranberry walnut'), 
                 sid('12" boule'), 1, (SELECT now()))
 ;
 
@@ -1172,61 +1204,68 @@ INSERT INTO days_of_week (dow_id, dow_names)
             (0, 'Sun')
 ;
 
-INSERT INTO standing_orders (day_of_week, customer_id, io, dough_id,
+INSERT INTO standing_orders (day_of_week, customer_id, io, product_id,
             shape_id, amt, modified)
        VALUES 
-            (1, pid('Blow'), 'i', did('goji%'), sid('12" boule'), 1, (SELECT now())),
-            (2, pid('Blow'), 'i', did('goji%'), sid('12" boule'), 1, (SELECT now())),
-            (3, pid('Blow'), 'i', did('goji%'), sid('12" boule'), 1, (SELECT now())),
-            (4, pid('Blow'), 'i', did('goji%'), sid('12" boule'), 1, (SELECT now())),
-            (5, pid('Blow'), 'i', did('goji%'), sid('12" boule'), 1, (SELECT now())),
-            (6, pid('Blow'), 'i', did('goji%'), sid('12" boule'), 1, (SELECT now())),
-            (0, pid('Blow'), 'i', did('goji%'), sid('12" boule'), 1, (SELECT now())),
-            (1, pid('Blow'), 'i', did('kamut%'), sid('12" boule'), 2, (SELECT now())),
-            (2, pid('Blow'), 'i', did('kamut%'), sid('12" boule'), 2, (SELECT now())),
-            (3, pid('Blow'), 'i', did('kamut%'), sid('12" boule'), 1, (SELECT now())),
-            (4, pid('Blow'), 'i', did('kamut%'), sid('12" boule'), 1, (SELECT now())),
-            (5, pid('Blow'), 'i', did('kamut%'), sid('12" boule'), 1, (SELECT now())),
-            (6, pid('Blow'), 'i', did('kamut%'), sid('12" boule'), 1, (SELECT now())),
-            (0, pid('Blow'), 'i', did('kamut%'), sid('12" boule'), 4, (SELECT now())),
-            (1, pid('Blow'), 'i', did('rugbrod'), sid('walter 25'), 2, (SELECT now())),
-            (2, pid('Blow'), 'i', did('rugbrod'), sid('walter 25'), 2, (SELECT now())),
-            (3, pid('Blow'), 'i', did('rugbrod'), sid('walter 25'), 2, (SELECT now())),
-            (4, pid('Blow'), 'i', did('rugbrod'), sid('walter 25'), 2, (SELECT now())),
-            (5, pid('Blow'), 'i', did('rugbrod'), sid('walter 25'), 2, (SELECT now())),
-            (6, pid('Blow'), 'i', did('rugbrod'), sid('walter 25'), 2, (SELECT now())),
-            (0, pid('Blow'), 'i', did('rugbrod'), sid('walter 25'), 2, (SELECT now()))
+            (0, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 24, (SELECT now())),
+            (1, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 24, (SELECT now())),
+            (2, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 24, (SELECT now())),
+            (3, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 24, (SELECT now())),
+            (4, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 24, (SELECT now())),
+            (5, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 24, (SELECT now())),
+            (6, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 24, (SELECT now())),
+            (1, pid('Blow'), 'i', prid('goji%'), sid('12" boule'), 1, (SELECT now())),
+            (2, pid('Blow'), 'i', prid('goji%'), sid('12" boule'), 1, (SELECT now())),
+            (3, pid('Blow'), 'i', prid('goji%'), sid('12" boule'), 1, (SELECT now())),
+            (4, pid('Blow'), 'i', prid('goji%'), sid('12" boule'), 1, (SELECT now())),
+            (5, pid('Blow'), 'i', prid('goji%'), sid('12" boule'), 1, (SELECT now())),
+            (6, pid('Blow'), 'i', prid('goji%'), sid('12" boule'), 1, (SELECT now())),
+            (0, pid('Blow'), 'i', prid('goji%'), sid('12" boule'), 1, (SELECT now())),
+            (1, pid('Blow'), 'i', prid('kamut%'), sid('12" boule'), 2, (SELECT now())),
+            (2, pid('Blow'), 'i', prid('kamut%'), sid('12" boule'), 2, (SELECT now())),
+            (3, pid('Blow'), 'i', prid('kamut%'), sid('12" boule'), 1, (SELECT now())),
+            (4, pid('Blow'), 'i', prid('kamut%'), sid('12" boule'), 1, (SELECT now())),
+            (5, pid('Blow'), 'i', prid('kamut%'), sid('12" boule'), 1, (SELECT now())),
+            (6, pid('Blow'), 'i', prid('kamut%'), sid('12" boule'), 1, (SELECT now())),
+            (0, pid('Blow'), 'i', prid('kamut%'), sid('12" boule'), 4, (SELECT now())),
+            (1, pid('Blow'), 'i', prid('rugbrod'), sid('walter 25'), 2, (SELECT now())),
+            (2, pid('Blow'), 'i', prid('rugbrod'), sid('walter 25'), 2, (SELECT now())),
+            (3, pid('Blow'), 'i', prid('rugbrod'), sid('walter 25'), 2, (SELECT now())),
+            (4, pid('Blow'), 'i', prid('rugbrod'), sid('walter 25'), 2, (SELECT now())),
+            (5, pid('Blow'), 'i', prid('rugbrod'), sid('walter 25'), 2, (SELECT now())),
+            (6, pid('Blow'), 'i', prid('rugbrod'), sid('walter 25'), 2, (SELECT now())),
+            (0, pid('Blow'), 'i', prid('rugbrod'), sid('walter 25'), 2, (SELECT now()))
 ;
 
 --make temporary change to standing orders
-INSERT INTO tmp_chng (day_of_week, customer_id, dough_id, shape_id, start_date, resume_date, percent_multiplier)
+INSERT INTO tmp_chng (day_of_week, customer_id, product_id, shape_id, start_date, resume_date, percent_multiplier)
        VALUES
-            (1, pid('Blow'), did('kamut sourdough'), sid('12" boule'), 
+            (1, pid('Blow'), prid('kamut sourdough'), sid('12" boule'), 
             (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50),
         
-            (2, pid('Blow'), did('kamut sourdough'), sid('12" boule'), 
+            (2, pid('Blow'), prid('kamut sourdough'), sid('12" boule'), 
             (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50),
 
-            (3, pid('Blow'), did('kamut sourdough'), sid('12" boule'), 
+            (3, pid('Blow'), prid('kamut sourdough'), sid('12" boule'), 
             (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 200),
 
-            (4, pid('Blow'), did('kamut sourdough'), sid('12" boule'), 
+            (4, pid('Blow'), prid('kamut sourdough'), sid('12" boule'), 
             (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 150),
         
-            (5, pid('Blow'), did('kamut sourdough'), sid('12" boule'), 
+            (5, pid('Blow'), prid('kamut sourdough'), sid('12" boule'), 
             (SELECT now()::date + interval '8 days'), (SELECT now()::date + interval '14 days'), 300),
 
-            (6, pid('Blow'), did('kamut sourdough'), sid('12" boule'), 
+            (6, pid('Blow'), prid('kamut sourdough'), sid('12" boule'), 
             (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 200),
 
-            (0, pid('Blow'), did('kamut sourdough'), sid('12" boule'), 
+            (0, pid('Blow'), prid('kamut sourdough'), sid('12" boule'), 
             (SELECT now()::date + interval '2 days'), (SELECT now()::date + interval '7 days'), 50)
 ;
 
 UPDATE standing_orders 
    SET amt = 2
  WhERE day_of_week = 0 AND customer_id = pid('Blow')
-   AND dough_id = did('kam%');
+   AND product_id = prid('kam%');
 
 
 UPDATE parties
