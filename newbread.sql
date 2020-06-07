@@ -47,6 +47,8 @@ VALUES ('i', 'Blow'),
        ('o', 'Viva Naturals'),
        ('o', 'Red Boat'),
        ('o', 'Vitruvian'),
+       ('o', 'FGO'),
+       ('o', 'The Spice Lab'),
        ('o', 'Sassy Cow'),
        ('o', 'Rani Brands'),
        ('o', 'Dept of Revenue'),
@@ -763,6 +765,7 @@ IMMUTABLE
 
 
 --usage: SELECT "%", ingredient, overall, sour, poolish, soaker, final FROM formula('kam%');
+--SELECT "%", ingredient, overall as grams FROM formula('cao%');
 CREATE OR REPLACE FUNCTION formula(my_product VARCHAR)
        RETURNS TABLE (dough character varying, "%" numeric, ingredient character varying,
        overall numeric, sour numeric, poolish numeric, soaker numeric, final numeric) AS $$
@@ -829,10 +832,10 @@ ORDER BY is_flour DESC, bakers_percent DESC)
       END;
 $$ LANGUAGE plpgsql;
 
---usage: SELECT dough, ingredient, grams, cost From cost_form('rug%');
+--usage: SELECT product, ingredient, grams, cost From cost_form('rug%');
 --usage: SELECT sum(grams) AS grams, sum(cost) AS cost, ROUND(sum(cost) / sum(grams),4) AS cost_per_gram FROM cost_form('rug%');
 CREATE OR REPLACE FUNCTION cost_form(my_product VARCHAR)
-       RETURNS TABLE (dough character varying, ingredient character varying,
+       RETURNS TABLE (product character varying, ingredient character varying,
        grams NUMERIC, cost numeric) AS $$
        BEGIN
              RETURN QUERY
@@ -843,7 +846,8 @@ CREATE OR REPLACE FUNCTION cost_form(my_product VARCHAR)
                           bak_per(my_product), 0) * cl.cost_per_g AS item_cost
                     FROM dough_info AS din
                     JOIN cost_list as cl on din.ingredient = cl.ingredient_name
-                    WHERE LOWER(din.product_name) LIKE LOWER(my_product);
+                    WHERE LOWER(din.product_name) LIKE LOWER(my_product)
+                    ORDER BY item_cost DESC;
       END;
 $$ LANGUAGE plpgsql;
 
@@ -982,6 +986,7 @@ INSERT INTO ingredients (ingredient_name, is_flour)
             ('dried cranberries', FALSE),
             ('walnuts', FALSE),
             ('almonds', FALSE),
+            ('cashews', FALSE),
             ('turkey red flour', TRUE),
             ('filmjolk', FALSE),
             ('barley malt syrup', FALSE),
@@ -997,10 +1002,13 @@ INSERT INTO ingredients (ingredient_name, is_flour)
             ('goji berries', FALSE),
             ('dates', FALSE),
             ('cardamom', FALSE),
+            ('smoked paprika', FALSE),
+            ('turmeric', FALSE),
             ('ceylon cinnamon', FALSE),
             ('monk fruit extract', FALSE),
             ('red boat salt', FALSE),
             ('coconut oil', FALSE),
+            ('nutritional yeast', FALSE),
             ('raw cao cao powder', FALSE),
             ('pumpkin seeds', FALSE)
 ;
@@ -1022,6 +1030,7 @@ INSERT INTO ingredient_costs (ingredient_id, maker_id, mio, seller_id, sio, cost
             (iid('dried cranberries'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 7.50, 450),
             (iid('walnuts'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 7.50, 450),
             (iid('almonds'), pid('Kirkland'), 'o', pid('Costco'), 'o', 10, 1360),
+            (iid('cashews'), pid('Kirkland'), 'o', pid('Costco'), 'o', 16.99, 1135),
             (iid('turkey red flour'), pid('Meadowlark%'), 'o', pid('Meadowlark%'), 'o', 7.00, 907),
             (iid('filmjolk'), pid('Siggis'), 'o', pid('Woodmans'), 'o', 4.00, 2000),
             (iid('barley malt syrup'), pid('Eden'), 'o', pid('Willy St Coop'), 'o', 4.00, 566),
@@ -1034,11 +1043,15 @@ INSERT INTO ingredient_costs (ingredient_id, maker_id, mio, seller_id, sio, cost
             (iid('sunflower seeds'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 10.95, 907),
             (iid('chia seeds'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 10.75, 1134),
             (iid('goji berries'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 13.85, 454),
+            (iid('nutritional yeast'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 8.43, 170),
+            (iid('raw cao cao powder'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 19.99, 1362),
             (iid('coconut oil'), pid('Viva Naturals'), 'o', pid('Amazon'), 'o', 13.22, 473),
             (iid('cardamom'), pid('Rani Brands'), 'o', pid('Amazon'), 'o', 13.99, 100),
             (iid('red boat salt'), pid('Red Boat'), 'o', pid('Amazon'), 'o', 19.95, 250),
             (iid('monk fruit extract'), pid('Now'), 'o', pid('Amazon'), 'o', 11.43, 59),
             (iid('ceylon cinnamon'), pid('Ceylon Flavors'), 'o', pid('Amazon'), 'o', 10.99, 99),
+            (iid('turmeric'), pid('FGO'), 'o', pid('Amazon'), 'o', 8.99, 226),
+            (iid('smoked paprika'), pid('The Spice Lab'), 'o', pid('Amazon'), 'o', 8.95, 130),
             (iid('pumpkin seeds'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 13.75, 907)
 ;
 
@@ -1101,7 +1114,15 @@ INSERT INTO product_ingredients (product_id, ingredient_id, bakers_percent)
             (prid('cao%'), iid('sea salt'), 1.3),
             (prid('cao%'), iid('red boat salt'), 1.3),
             (prid('cao%'), iid('cardamom'), 0.67),
-            (prid('cao%'), iid('monk fruit extract'), 0.43)
+            (prid('cao%'), iid('monk fruit extract'), 0.43),
+            (prid('yeastie%'), iid('almonds'), 100),
+            (prid('yeastie%'), iid('cashews'), 100),
+            (prid('yeastie%'), iid('coconut oil'), 77.8),
+            (prid('yeastie%'), iid('goji%'), 69.4),
+            (prid('yeastie%'), iid('nutritional%'), 45),
+            (prid('yeastie%'), iid('smoked paprika'), 2),
+            (prid('yeastie%'), iid('turmeric'), 2),
+            (prid('yeastie%'), iid('sea salt'), 2)
 ;
 
             --product_ingredients(use lower case)
@@ -1214,6 +1235,13 @@ INSERT INTO days_of_week (dow_id, dow_names)
 INSERT INTO standing_orders (day_of_week, customer_id, io, product_id,
             shape_id, amt, modified)
        VALUES 
+            (0, pid('Blow'), 'i', prid('yeastie%'), sid('100%'), 1, (SELECT now())),
+            (1, pid('Blow'), 'i', prid('yeastie%'), sid('100%'), 1, (SELECT now())),
+            (2, pid('Blow'), 'i', prid('yeastie%'), sid('100%'), 1, (SELECT now())),
+            (3, pid('Blow'), 'i', prid('yeastie%'), sid('100%'), 1, (SELECT now())),
+            (4, pid('Blow'), 'i', prid('yeastie%'), sid('100%'), 1, (SELECT now())),
+            (5, pid('Blow'), 'i', prid('yeastie%'), sid('100%'), 1, (SELECT now())),
+            (6, pid('Blow'), 'i', prid('yeastie%'), sid('100%'), 1, (SELECT now())),
             (0, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 24, (SELECT now())),
             (1, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 24, (SELECT now())),
             (2, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 24, (SELECT now())),
