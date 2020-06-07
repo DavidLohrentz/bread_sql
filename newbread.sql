@@ -253,9 +253,9 @@ CREATE TABLE product_ingredients (
        product_id uuid NOT NULL REFERENCES products(product_id),
        ingredient_id uuid NOT NULL REFERENCES ingredients(ingredient_id),
        bakers_percent NUMERIC (5, 2) NOT NULL,
-       percent_in_sour NUMERIC NOT NULL,
-       percent_in_poolish NUMERIC (5, 2) NOT NULL,
-       percent_in_soaker NUMERIC NOT NULL,
+       percent_in_sour NUMERIC DEFAULT 0 NOT NULL,
+       percent_in_poolish NUMERIC (5, 2) DEFAULT 0 NOT NULL,
+       percent_in_soaker NUMERIC DEFAULT 0 NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (product_id, ingredient_id),
@@ -949,6 +949,7 @@ INSERT INTO shapes (shape_name)
             ('16" pizza'),
             ('baguette'),
             ('truffle'),
+            ('100 grams'),
             ('7" pita'),
             ('hard rolls')
 ;
@@ -960,6 +961,7 @@ INSERT INTO products (product_name, lead_time_days, is_dough)
             ('five day', 5, TRUE),
             ('goji almond nyt', 2, TRUE),
             ('rugbrod', 2, TRUE),
+            ('yeastie nuts', 0, FALSE),
             ('cao cao almond chocolate', 0, FALSE),
             ('kamut sourdough', 2, TRUE),
             ('pita bread', 1, TRUE)
@@ -1081,9 +1083,25 @@ INSERT INTO product_shapes (product_id, shape_id, grams)
             (prid('goji almond nyt'), sid('12" boule'), 1600),
             (prid('five%'), sid('12" boule'), 1600),
             (prid('cao cao%'), sid('truffle'), 24),
+            (prid('yeastie%'), sid('100 g%'), 100),
             (prid('cranberry walnut'), sid('12" boule'), 1600),
             (prid('cranberry walnut'), sid('hard rolls'), 120),
             (prid('pizza dough'), sid('16" pizza'), 400)
+;
+            
+           --product_ingredients(use lower case)products without preferments
+INSERT INTO product_ingredients (product_id, ingredient_id, bakers_percent)
+     VALUES (prid('cao%'), iid('raw cao cao powder'), 100),
+            (prid('cao%'), iid('coconut oil'), 66.7),
+            (prid('cao%'), iid('dates'), 53.3),
+            (prid('cao%'), iid('almonds'), 33.3),
+            (prid('cao%'), iid('pumpkin seeds'), 33.3),
+            (prid('cao%'), iid('goji berries'), 13.3),
+            (prid('cao%'), iid('ceylon cinnamon'), 2.7),
+            (prid('cao%'), iid('sea salt'), 1.3),
+            (prid('cao%'), iid('red boat salt'), 1.3),
+            (prid('cao%'), iid('cardamom'), 0.67),
+            (prid('cao%'), iid('monk fruit extract'), 0.43)
 ;
 
             --product_ingredients(use lower case)
@@ -1112,17 +1130,6 @@ INSERT INTO product_ingredients (product_id, ingredient_id, bakers_percent,
             (prid('pita bread'), iid('all purpose flour'), 50, 5.4, 0, 0),
             (prid('pita bread'), iid('water'), 64, 2.4, 0, 0),
             (prid('pita bread'), iid('sea salt'), 1.9, 0, 0, 0),
-            (prid('cao%'), iid('raw cao cao powder'), 100, 0, 0, 0),
-            (prid('cao%'), iid('coconut oil'), 66.7, 0, 0, 0),
-            (prid('cao%'), iid('dates'), 53.3, 0, 0, 0),
-            (prid('cao%'), iid('almonds'), 33.3, 0, 0, 0),
-            (prid('cao%'), iid('pumpkin seeds'), 33.3, 0, 0, 0),
-            (prid('cao%'), iid('goji berries'), 13.3, 0, 0, 0),
-            (prid('cao%'), iid('ceylon cinnamon'), 2.7, 0, 0, 0),
-            (prid('cao%'), iid('sea salt'), 1.3, 0, 0, 0),
-            (prid('cao%'), iid('red boat salt'), 1.3, 0, 0, 0),
-            (prid('cao%'), iid('cardamom'), 0.67, 0, 0, 0),
-            (prid('cao%'), iid('monk fruit extract'), 0.43, 0, 0, 0),
             (prid('pizza dough'), iid('bread flour'), 30, 0, 25, 0),
             (prid('pizza dough'), iid('kamut flour'), 40, 0, 0, 0),
             (prid('pizza dough'), iid('high extraction flour'), 30, 0, 0, 0),
