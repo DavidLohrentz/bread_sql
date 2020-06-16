@@ -10,11 +10,12 @@ SET timezone = 'US/Central';
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS pg_libphonenumber;
 
 CREATE TABLE parties (
        party_id uuid default gen_random_uuid(),
        party_type text NOT NULL,
-       party_name VARCHAR(80) NOT NULL,
+       party_name VARCHAR NOT NULL,
        created TIMESTAMPTZ DEFAULT now(),
        modified TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (party_id, party_type),
@@ -42,6 +43,7 @@ VALUES ('i', 'Blow'),
        ('o', 'New Glarus Brewery'),
        ('o', 'Eden'),
        ('o', 'Terrasoul'),
+       ('o', '4th & Heart'),
        ('o', 'Ceylon Flavors'),
        ('o', 'Now'),
        ('o', 'Viva Naturals'),
@@ -227,7 +229,7 @@ CREATE TABLE products (
        product_id uuid PRIMARY KEY default gen_random_uuid(),
        product_name VARCHAR UNIQUE NOT NULL,
        lead_time_days INTEGER NOT NULL,
-       is_dough BOOLEAN DEFAULT 'true' NOT NULL,
+       is_dough BOOLEAN NOT NULL,
        CONSTRAINT lead_time_not_negative CHECK (lead_time_days >= 0),
        CONSTRAINT lead_time_less_than_8 CHECK (lead_time_days < 8)
 );
@@ -258,8 +260,8 @@ CREATE TABLE product_ingredients (
        percent_in_sour NUMERIC DEFAULT 0 NOT NULL,
        percent_in_poolish NUMERIC (5, 2) DEFAULT 0 NOT NULL,
        percent_in_soaker NUMERIC DEFAULT 0 NOT NULL,
-       created TIMESTAMPTZ DEFAULT now(),
-       modified TIMESTAMPTZ DEFAULT now(),
+       created TIMESTAMPTZ DEFAULT now() NOT NULL,
+       modified TIMESTAMPTZ DEFAULT now() NOT NULL,
        PRIMARY KEY (product_id, ingredient_id),
        CONSTRAINT bp_positive CHECK (bakers_percent > 0),
        CONSTRAINT percent_in_sour_positive CHECK (percent_in_sour >= 0),
@@ -280,7 +282,7 @@ CREATE TABLE product_ingredients_changes (
        percent_in_sour NUMERIC NOT NULL,
        percent_in_poolish NUMERIC (5, 2) NOT NULL,
        percent_in_soaker NUMERIC NOT NULL,
-       created TIMESTAMPTZ DEFAULT now(),
+       created TIMESTAMPTZ DEFAULT now() NOT NULL,
        modified TIMESTAMPTZ DEFAULT now(),
        PRIMARY KEY (product_id, new_ingredient_id, created),
        CONSTRAINT bp_positive CHECK (new_bakers_percent > 0),
@@ -771,7 +773,7 @@ IMMUTABLE
 --formula with poolish:
          --SELECT "%", ingredient, overall, poolish, final FROM formula('pizza');
 --recipe with no preferments
-         --SELECT "%", ingredient, overall as grams FROM formula('cao%');
+         --SELECT product, "%", ingredient, overall as grams FROM formula('cao%');
 --sum of the product cost
          --SELECT sum(cost) FROM formula('rug%');
 --cost per gram
@@ -942,7 +944,7 @@ INSERT INTO products (product_name, lead_time_days, is_dough)
             ('goji almond nyt', 2, TRUE),
             ('rugbrod', 2, TRUE),
             ('yeastie nuts', 0, FALSE),
-            ('cao cao almond chocolate', 0, FALSE),
+            ('cao cao truffles', 0, FALSE),
             ('kamut sourdough', 2, TRUE),
             ('pita bread', 1, TRUE)
 ;
@@ -963,6 +965,7 @@ INSERT INTO ingredients (ingredient_name, is_flour)
             ('walnuts', FALSE),
             ('almonds', FALSE),
             ('cashews', FALSE),
+            ('pistachios', FALSE),
             ('turkey red flour', TRUE),
             ('filmjolk', FALSE),
             ('barley malt syrup', FALSE),
@@ -984,6 +987,7 @@ INSERT INTO ingredients (ingredient_name, is_flour)
             ('monk fruit extract', FALSE),
             ('red boat salt', FALSE),
             ('coconut oil', FALSE),
+            ('ghee', FALSE),
             ('nutritional yeast', FALSE),
             ('raw cao cao powder', FALSE),
             ('pumpkin seeds', FALSE)
@@ -1006,6 +1010,7 @@ INSERT INTO ingredient_costs (ingredient_id, maker_id, mio, seller_id, sio, cost
             (iid('dried cranberries'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 7.50, 450),
             (iid('walnuts'), pid('Willy St Coop'), 'o', pid('Willy St Coop'), 'o', 7.50, 450),
             (iid('almonds'), pid('Kirkland'), 'o', pid('Costco'), 'o', 10, 1360),
+            (iid('pistachios'), pid('Kirkland'), 'o', pid('Costco'), 'o', 10, 1360),
             (iid('cashews'), pid('Kirkland'), 'o', pid('Costco'), 'o', 16.99, 1135),
             (iid('turkey red flour'), pid('Meadowlark%'), 'o', pid('Meadowlark%'), 'o', 7.00, 907),
             (iid('filmjolk'), pid('Siggis'), 'o', pid('Woodmans'), 'o', 4.00, 2000),
@@ -1019,9 +1024,11 @@ INSERT INTO ingredient_costs (ingredient_id, maker_id, mio, seller_id, sio, cost
             (iid('sunflower seeds'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 10.95, 907),
             (iid('chia seeds'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 10.75, 1134),
             (iid('goji berries'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 13.85, 454),
+            (iid('dates'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 14.95, 907),
             (iid('nutritional yeast'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 8.43, 170),
             (iid('raw cao cao powder'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 19.99, 1362),
             (iid('coconut oil'), pid('Viva Naturals'), 'o', pid('Amazon'), 'o', 13.22, 473),
+            (iid('ghee'), pid('4th & Heart'), 'o', pid('Amazon'), 'o', 17.11, 454),
             (iid('cardamom'), pid('Rani Brands'), 'o', pid('Amazon'), 'o', 13.99, 100),
             (iid('red boat salt'), pid('Red Boat'), 'o', pid('Amazon'), 'o', 19.95, 250),
             (iid('monk fruit extract'), pid('Now'), 'o', pid('Amazon'), 'o', 11.43, 59),
@@ -1067,7 +1074,7 @@ VALUES (pid('Blow'), 'p', 'bubba@gmail.com'),
             --product_shapes (use lower case)
 INSERT INTO product_shapes (product_id, shape_id, grams)
      VALUES (prid('kamut sourdough'), sid('12" boule'), 1600),
-            (prid('rugbrod'), sid('walter 25'), 1200),
+            (prid('rugbrod'), sid('walter 25'), 1150),
             (prid('pita bread'), sid('7" pita'), 105),
             (prid('goji almond nyt'), sid('12" boule'), 1600),
             (prid('five%'), sid('12" boule'), 1600),
@@ -1081,10 +1088,12 @@ INSERT INTO product_shapes (product_id, shape_id, grams)
            --product_ingredients(use lower case)products without preferments
 INSERT INTO product_ingredients (product_id, ingredient_id, bakers_percent)
      VALUES (prid('cao%'), iid('raw cao cao powder'), 100),
-            (prid('cao%'), iid('coconut oil'), 66.7),
-            (prid('cao%'), iid('dates'), 53.3),
-            (prid('cao%'), iid('almonds'), 33.3),
-            (prid('cao%'), iid('pumpkin seeds'), 33.3),
+            (prid('cao%'), iid('ghee'), 33.35),
+            (prid('cao%'), iid('coconut oil'), 33.35),
+            (prid('cao%'), iid('dates'), 65),
+            (prid('cao%'), iid('almonds'), 13.74),
+            (prid('cao%'), iid('pumpkin seeds'), 26.43),
+            (prid('cao%'), iid('pistachios'), 26.43),
             (prid('cao%'), iid('goji berries'), 13.3),
             (prid('cao%'), iid('ceylon cinnamon'), 2.7),
             (prid('cao%'), iid('sea salt'), 1.3),
@@ -1134,16 +1143,16 @@ INSERT INTO product_ingredients (product_id, ingredient_id, bakers_percent,
             (prid('pizza dough'), iid('sea salt'), 1.9, 0, 0, 0),
             (prid('pizza dough'), iid('saf-instant yeast'), .05, 0, 100, 0),
             (prid('rugbrod'), iid('rye flour'), 100, 27.3, 0, 0),
-            (prid('rugbrod'), iid('water'), 103.6, 43.9, 0, 18),
+            (prid('rugbrod'), iid('water'), 100, 45, 0, 18),
             (prid('rugbrod'), iid('sunflower seeds'), 7.3, 0, 0, 100),
             (prid('rugbrod'), iid('black sesame seeds'), 5.4, 0, 0, 100),
-            (prid('rugbrod'), iid('whole flax seeds'), 5.4, 0, 0, 100),
-            (prid('rugbrod'), iid('chia seeds'), 3.64, 0, 0, 100),
+            (prid('rugbrod'), iid('whole flax seeds'), 3.5, 0, 0, 100),
+            (prid('rugbrod'), iid('chia seeds'), 5.4, 0, 0, 100),
             (prid('rugbrod'), iid('pumpkin seeds'), 36.4, 0, 0, 100),
             (prid('rugbrod'), iid('ground flax seeds'), 6.36, 0, 0, 0),
             (prid('rugbrod'), iid('sprouted spelt berries'), 26.4, 0, 0, 0),
             (prid('rugbrod'), iid('kefir whey'), 40, 0, 0, 100),
-            (prid('rugbrod'), iid('sea salt'), 3.64, 0, 0, 0)
+            (prid('rugbrod'), iid('sea salt'), 3.5, 0, 0, 0)
 ;
 
 
@@ -1218,13 +1227,13 @@ INSERT INTO standing_orders (day_of_week, customer_id, io, product_id,
             (4, pid('Blow'), 'i', prid('yeastie%'), sid('100%'), 1, (SELECT now())),
             (5, pid('Blow'), 'i', prid('yeastie%'), sid('100%'), 1, (SELECT now())),
             (6, pid('Blow'), 'i', prid('yeastie%'), sid('100%'), 1, (SELECT now())),
-            (0, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 24, (SELECT now())),
-            (1, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 24, (SELECT now())),
-            (2, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 24, (SELECT now())),
-            (3, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 24, (SELECT now())),
-            (4, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 24, (SELECT now())),
-            (5, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 24, (SELECT now())),
-            (6, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 24, (SELECT now())),
+            (0, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 50, (SELECT now())),
+            (1, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 50, (SELECT now())),
+            (2, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 50, (SELECT now())),
+            (3, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 50, (SELECT now())),
+            (4, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 50, (SELECT now())),
+            (5, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 50, (SELECT now())),
+            (6, pid('Blow'), 'i', prid('cao%'), sid('truffle'), 50, (SELECT now())),
             (1, pid('Blow'), 'i', prid('goji%'), sid('12" boule'), 1, (SELECT now())),
             (2, pid('Blow'), 'i', prid('goji%'), sid('12" boule'), 1, (SELECT now())),
             (3, pid('Blow'), 'i', prid('goji%'), sid('12" boule'), 1, (SELECT now())),
