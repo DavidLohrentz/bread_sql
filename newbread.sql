@@ -237,6 +237,12 @@ CREATE TABLE products (
 CREATE INDEX products_product_name_trgm_idx ON products
  USING GIN (product_name gin_trgm_ops);
 
+CREATE TABLE product_instructions (
+       product_id uuid NOT NULL REFERENCES products(product_id),
+       sequence integer UNIQUE NOT NULL,
+       direction text NOT NULL,
+       CONSTRAINT sequence_positive CHECK (sequence > 0)
+);
 
 CREATE TABLE shapes (
        shape_id uuid PRIMARY KEY default gen_random_uuid(),
@@ -949,7 +955,23 @@ INSERT INTO products (product_name, lead_time_days, is_dough)
             ('pita bread', 1, TRUE)
 ;
 
-            --ingredients (use lower case)
+
+INSERT INTO product_instructions (product_id, sequence, direction)
+     VALUES
+            (prid('cao%'), 1, 'grind spices in spice grinder'),
+            (prid('cao%'), 2, 'grind spices in juicer'),
+            (prid('cao%'), 3, 'add salt to nuts'),
+            (prid('cao%'), 4, 'grind nuts/salt/spices in juicer twice'),
+            (prid('cao%'), 5, 'alternate fruit with nut mixture in grinder'),
+            (prid('cao%'), 6, 'repeat previous step'),
+            (prid('cao%'), 7, 'alternate cao cao with nut/fruit mixter SLOWLY little at a time'),
+            (prid('cao%'), 8, 'repeat previous step'),
+            (prid('cao%'), 9, 'melt ghee/coconut oil, add monk fruit, one drop per truffle, and add to dries'),
+            (prid('cao%'), 10, 'form into balls and place on silpat and freeze for 30 min'),
+            (prid('cao%'), 11, 'wrap in wax paper')
+;
+
+--ingredients (use lower case)
 INSERT INTO ingredients (ingredient_name, is_flour)
      VALUES ('bolted red fife flour', TRUE),
             ('kamut flour', TRUE),
