@@ -27,7 +27,8 @@ CREATE INDEX parties_party_name_trgm_idx ON parties
  USING GIN (party_name gin_trgm_ops);
 
 INSERT INTO parties (party_type, party_name)
-VALUES ('i', 'Blow'),
+VALUES 
+       ('i', 'Blow'),
        ('i', 'Bar'),
        ('o', 'Madison Sourdough'),
        ('o', 'Meadowlark Organics'),
@@ -50,11 +51,15 @@ VALUES ('i', 'Blow'),
        ('o', 'Viva Naturals'),
        ('o', 'Red Boat'),
        ('o', 'Vitruvian'),
+       ('o', 'OrgaNICK'),
+       ('o', 'Willow Creek'),
        ('o', 'FGO'),
        ('o', 'The Spice Lab'),
+       ('o', 'Penzeys'),
        ('o', 'Sassy Cow'),
        ('o', 'Rani Brands'),
        ('o', 'Dept of Revenue'),
+       ('o', 'OFood'),
        ('o', 'Westside Farmers Market'),
        ('i', 'Latte')
 ;
@@ -240,7 +245,7 @@ CREATE INDEX products_product_name_trgm_idx ON products
 
 CREATE TABLE product_instructions (
        product_id uuid NOT NULL REFERENCES products(product_id),
-       sequence integer UNIQUE NOT NULL,
+       sequence integer NOT NULL,
        direction text NOT NULL,
        CONSTRAINT sequence_positive CHECK (sequence > 0)
 );
@@ -915,7 +920,8 @@ VALUES (53705, 'Madison', 'WI'),
 ;
 
 INSERT INTO phones (party_id, phone_type, phone_no)
-VALUES (pid('Blow'), 'm', '555-1212'),
+VALUES 
+       (pid('Blow'), 'm', '555-1212'),
        (pid('Blow'), 'w', '608-555-0000'),
        (pid('Madison Sourdough'), 'b', '608-442-8009'),
        (pid('Woodmans'), 'b', '608-555-1111'),
@@ -933,19 +939,21 @@ VALUES ((SELECT party_id FROM parties WHERE party_name = 'Blow' AND now() - modi
 
             --shapes
 INSERT INTO shapes (shape_name)
-     VALUES ('12" boule'),
-            ('walter 25'),
-            ('16" pizza'),
-            ('baguette'),
-            ('truffle'),
-            ('100 grams'),
-            ('7" pita'),
-            ('hard rolls')
+VALUES 
+       ('12" boule'),
+       ('walter 25'),
+       ('16" pizza'),
+       ('baguette'),
+       ('truffle'),
+       ('100 grams'),
+       ('7" pita'),
+       ('hard rolls')
 ;
 
             --products
 INSERT INTO products (product_name, lead_time_days, is_dough)
-     VALUES ('cranberry walnut', 2, TRUE),
+     VALUES
+            ('cranberry walnut', 2, TRUE),
             ('pizza dough', 1, TRUE),
             ('five day', 5, TRUE),
             ('goji almond nyt', 2, TRUE),
@@ -953,12 +961,14 @@ INSERT INTO products (product_name, lead_time_days, is_dough)
             ('yeastie nuts', 0, FALSE),
             ('cao cao truffles', 0, FALSE),
             ('kamut sourdough', 2, TRUE),
+            ('leverpostej', 0, False),
             ('pita bread', 1, TRUE)
 ;
 
 
 INSERT INTO product_instructions (product_id, sequence, direction)
      VALUES
+            (prid('leverpostej'), 1, 'bake in water bath at 350 F until internal temp is 176 F'),
             (prid('cao%'), 1, 'grind spices in spice grinder'),
             (prid('cao%'), 2, 'grind spices in juicer'),
             (prid('cao%'), 3, 'add salt to nuts'),
@@ -974,7 +984,8 @@ INSERT INTO product_instructions (product_id, sequence, direction)
 
 --ingredients (use lower case)
 INSERT INTO ingredients (ingredient_name, is_flour)
-     VALUES ('bolted red fife flour', TRUE),
+     VALUES 
+            ('bolted red fife flour', TRUE),
             ('kamut flour', TRUE),
             ('kamut berries', TRUE),
             ('sprouted kamut berries', TRUE),
@@ -1013,8 +1024,17 @@ INSERT INTO ingredients (ingredient_name, is_flour)
             ('red boat salt', FALSE),
             ('coconut oil', FALSE),
             ('ghee', FALSE),
+            ('liver', FALSE),
+            ('heavy cream', FALSE),
+            ('bacon', FALSE),
+            ('eggs', FALSE),
+            ('mushrooms', FALSE),
+            ('onions', FALSE),
+            ('fermented ginger/garlic', FALSE),
+            ('black pepper', FALSE),
             ('nutritional yeast', FALSE),
             ('raw cao cao powder', FALSE),
+            ('anchovy sauce', FALSE),
             ('pumpkin seeds', FALSE)
 ;
 
@@ -1062,9 +1082,17 @@ INSERT INTO ingredient_costs (ingredient_id, maker_id, mio, seller_id, sio, cost
             (iid('ceylon cinnamon'), pid('Ceylon Flavors'), 'o', pid('Amazon'), 'o', 10.99, 99),
             (iid('turmeric'), pid('FGO'), 'o', pid('Amazon'), 'o', 8.99, 226),
             (iid('smoked paprika'), pid('The Spice Lab'), 'o', pid('Amazon'), 'o', 8.95, 130),
+            (iid('liver'), pid('Woodmans'), 'o', pid('Woodmans'), 'o', 5.00, 454),
+            (iid('heavy cream'), pid('Sassy%'), 'o', pid('Woodmans'), 'o', 4.50, 454),
+            (iid('bacon'), pid('Willow C%'), 'o', pid('Vitruvian'), 'o', 11.00, 454),
+            (iid('eggs'), pid('OrgaNICK%'), 'o', pid('Vitruvian'), 'o', 4.00, 600),
+            (iid('mushrooms'), pid('Vitruvian%'), 'o', pid('Vitruvian'), 'o', 10.00, 454),
+            (iid('onions'), pid('Woodmans%'), 'o', pid('Woodmans'), 'o', 2.00, 454),
+            (iid('fermented ginger/garlic'), pid('Blow'), 'i', pid('Blow'), 'i', 2.00, 454),
+            (iid('black pepper'), pid('Penzeys'), 'o', pid('Penzeys'), 'o', 8.69, 94),
+            (iid('anchovy sauce'), pid('OFood'), 'o', pid('Amazon'), 'o', 14.38, 1000),
             (iid('pumpkin seeds'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 13.75, 907)
 ;
-
 
 INSERT INTO staff_st (party_id, party_type, ssn, is_active, hire_date,
        street_no, street, zip)
@@ -1109,6 +1137,7 @@ INSERT INTO product_shapes (product_id, shape_id, grams)
             (prid('yeastie%'), sid('100 g%'), 100),
             (prid('cranberry walnut'), sid('12" boule'), 1600),
             (prid('cranberry walnut'), sid('hard rolls'), 120),
+            (prid('leverpostej'), sid('walter 25'), 1250),
             (prid('pizza dough'), sid('16" pizza'), 400)
 ;
             
@@ -1134,7 +1163,20 @@ INSERT INTO product_ingredients (product_id, ingredient_id, bakers_percent)
             (prid('yeastie%'), iid('nutritional%'), 45),
             (prid('yeastie%'), iid('smoked paprika'), 2),
             (prid('yeastie%'), iid('turmeric'), 2),
-            (prid('yeastie%'), iid('sea salt'), 2)
+            (prid('yeastie%'), iid('sea salt'), 2),
+            (prid('leverpostej'), iid('liver'), 100),
+            (prid('leverpostej'), iid('onions'), 28.3),
+            (prid('leverpostej'), iid('mushrooms'), 15),
+            (prid('leverpostej'), iid('bacon'), 40),
+            (prid('leverpostej'), iid('heavy cream'), 33.3),
+            (prid('leverpostej'), iid('kamut flour'), 12.7),
+            (prid('leverpostej'), iid('eggs'), 33.3),
+            (prid('leverpostej'), iid('ghee'), 41.7),
+            (prid('leverpostej'), iid('red boat salt'), 1.2),
+            (prid('leverpostej'), iid('smoked paprika'), 1.5),
+            (prid('leverpostej'), iid('black pepper'), 0.5),
+            (prid('leverpostej'), iid('anchovy sauce'), 2),
+            (prid('leverpostej'), iid('fermented ginger/garlic'), 2)
 ;
 
             --product_ingredients(use lower case)
@@ -1282,7 +1324,14 @@ INSERT INTO standing_orders (day_of_week, customer_id, io, product_id,
             (4, pid('Blow'), 'i', prid('rugbrod'), sid('walter 25'), 2, (SELECT now())),
             (5, pid('Blow'), 'i', prid('rugbrod'), sid('walter 25'), 2, (SELECT now())),
             (6, pid('Blow'), 'i', prid('rugbrod'), sid('walter 25'), 2, (SELECT now())),
-            (0, pid('Blow'), 'i', prid('rugbrod'), sid('walter 25'), 2, (SELECT now()))
+            (0, pid('Blow'), 'i', prid('rugbrod'), sid('walter 25'), 2, (SELECT now())),
+            (1, pid('Blow'), 'i', prid('leverpostej'), sid('walter 25'), 1, (SELECT now())),
+            (2, pid('Blow'), 'i', prid('leverpostej'), sid('walter 25'), 1, (SELECT now())),
+            (3, pid('Blow'), 'i', prid('leverpostej'), sid('walter 25'), 1, (SELECT now())),
+            (4, pid('Blow'), 'i', prid('leverpostej'), sid('walter 25'), 1, (SELECT now())),
+            (5, pid('Blow'), 'i', prid('leverpostej'), sid('walter 25'), 1, (SELECT now())),
+            (6, pid('Blow'), 'i', prid('leverpostej'), sid('walter 25'), 1, (SELECT now())),
+            (0, pid('Blow'), 'i', prid('leverpostej'), sid('walter 25'), 1, (SELECT now()))
 ;
 
 --make temporary change to standing orders
