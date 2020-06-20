@@ -603,12 +603,6 @@ SELECT pr.product_id, p.party_name AS customer, so.delivery_date,
        AND so.io = p.party_type
  WHERE now()::date + pr.lead_time_days = so.delivery_date;
 
-CREATE OR REPLACE VIEW todays_order_summary AS 
-SELECT product_id, product_name, sum(amt * grams) AS total_grams
-  FROM todays_orders
- GROUP BY product_name, product_id
- ORDER BY product_id;
-
 
 CREATE OR REPLACE VIEW todays_adjusted_so AS
 WITH
@@ -976,7 +970,7 @@ INSERT INTO product_instructions (product_id, sequence, directions)
             (prid('leverpostej'), 4, 'coat baking pan with butter, then shake flour all the way around on all inside surfaces'),
             (prid('leverpostej'), 5, 'gently fold all ingredients in large bowl, do not over-mix; pour into buttered/floured pan'),
             (prid('leverpostej'), 6, 'bake in bain-marie at 350 F until internal temp is 176 F'),
-            (prid('leverpostej'), 7, 'if setting up in smoker, preheat on stove; in smoker lid off dutch oven, pecan wood'),
+            (prid('leverpostej'), 7, 'if setting up in smoker, preheat on stove; in smoker--lid off dutch oven, add smoke wood'),
             (prid('leverpostej'), 8, 'Place in an ice water bath for 45 minutes, then cover with wrap and chill in frig'),
             (prid('cao%'), 1, 'grind spices in spice grinder'),
             (prid('cao%'), 2, 'grind spices in juicer'),
