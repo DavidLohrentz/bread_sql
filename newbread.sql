@@ -37,6 +37,7 @@ VALUES
        ('o', 'Costco'),
        ('o', 'Kirkland'),
        ('o', 'King Arthur'),
+       ('o', 'King Oscar'),
        ('o', 'Redmond'),
        ('o', 'LeSaffre'),
        ('o', 'Siggis'),
@@ -246,8 +247,8 @@ CREATE INDEX products_product_name_trgm_idx ON products
 CREATE TABLE product_instructions (
        product_id uuid NOT NULL REFERENCES products(product_id),
        sequence integer NOT NULL,
-       direction text NOT NULL,
-       CONSTRAINT sequence_positive CHECK (sequence > 0)
+       directions text NOT NULL,
+       CONSTRAINT sequence_positive CHECK (sequence >= 0)
 );
 
 CREATE TABLE shapes (
@@ -966,9 +967,17 @@ INSERT INTO products (product_name, lead_time_days, is_dough)
 ;
 
 
-INSERT INTO product_instructions (product_id, sequence, direction)
+INSERT INTO product_instructions (product_id, sequence, directions)
      VALUES
-            (prid('leverpostej'), 1, 'bake in water bath at 350 F until internal temp is 176 F'),
+            (prid('leverpostej'), 0, 'have butcher grind liver and bacon/pork fat'),
+            (prid('leverpostej'), 1, 'weigh dry spices in mixing bowl'),
+            (prid('leverpostej'), 2, 'weigh milk, eggs, flour and whisk well'),
+            (prid('leverpostej'), 3, 'melt ghee & process in food processor with onions, shrooms, anchovies, hot sauce, ginger/garlic'),
+            (prid('leverpostej'), 4, 'coat baking pan with butter, then shake flour all the way around on all inside surfaces'),
+            (prid('leverpostej'), 5, 'gently fold all ingredients in large bowl, do not over-mix; pour into buttered/floured pan'),
+            (prid('leverpostej'), 6, 'bake in bain-marie at 350 F until internal temp is 176 F'),
+            (prid('leverpostej'), 7, 'if setting up in smoker, preheat on stove; in smoker lid off dutch oven, pecan wood'),
+            (prid('leverpostej'), 8, 'Place in an ice water bath for 45 minutes, then cover with wrap and chill in frig'),
             (prid('cao%'), 1, 'grind spices in spice grinder'),
             (prid('cao%'), 2, 'grind spices in juicer'),
             (prid('cao%'), 3, 'add salt to nuts'),
@@ -1020,17 +1029,21 @@ INSERT INTO ingredients (ingredient_name, is_flour)
             ('smoked paprika', FALSE),
             ('turmeric', FALSE),
             ('ceylon cinnamon', FALSE),
+            ('nutmeg', FALSE),
             ('monk fruit extract', FALSE),
             ('red boat salt', FALSE),
+            ('anchovies', FALSE),
             ('coconut oil', FALSE),
             ('ghee', FALSE),
             ('liver', FALSE),
             ('heavy cream', FALSE),
+            ('whole milk', FALSE),
             ('bacon', FALSE),
             ('eggs', FALSE),
             ('mushrooms', FALSE),
             ('onions', FALSE),
             ('fermented ginger/garlic', FALSE),
+            ('fermented hot sauce', FALSE),
             ('black pepper', FALSE),
             ('nutritional yeast', FALSE),
             ('raw cao cao powder', FALSE),
@@ -1070,6 +1083,7 @@ INSERT INTO ingredient_costs (ingredient_id, maker_id, mio, seller_id, sio, cost
             (iid('black sesame seeds'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 12.95, 907),
             (iid('sunflower seeds'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 10.95, 907),
             (iid('chia seeds'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 10.75, 1134),
+            (iid('anchovies'), pid('King Oscar'), 'o', pid('Amazon'), 'o', 12.30, 224),
             (iid('goji berries'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 13.85, 454),
             (iid('dates'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 14.95, 907),
             (iid('nutritional yeast'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 8.43, 170),
@@ -1080,15 +1094,18 @@ INSERT INTO ingredient_costs (ingredient_id, maker_id, mio, seller_id, sio, cost
             (iid('red boat salt'), pid('Red Boat'), 'o', pid('Amazon'), 'o', 19.95, 250),
             (iid('monk fruit extract'), pid('Now'), 'o', pid('Amazon'), 'o', 11.43, 59),
             (iid('ceylon cinnamon'), pid('Ceylon Flavors'), 'o', pid('Amazon'), 'o', 10.99, 99),
+            (iid('nutmeg'), pid('Ceylon Flavors'), 'o', pid('Amazon'), 'o', 6.95, 100),
             (iid('turmeric'), pid('FGO'), 'o', pid('Amazon'), 'o', 8.99, 226),
             (iid('smoked paprika'), pid('The Spice Lab'), 'o', pid('Amazon'), 'o', 8.95, 130),
             (iid('liver'), pid('Woodmans'), 'o', pid('Woodmans'), 'o', 5.00, 454),
             (iid('heavy cream'), pid('Sassy%'), 'o', pid('Woodmans'), 'o', 4.50, 454),
+            (iid('whole milk'), pid('Sassy%'), 'o', pid('Woodmans'), 'o', 4.00, 1950),
             (iid('bacon'), pid('Willow C%'), 'o', pid('Vitruvian'), 'o', 11.00, 454),
             (iid('eggs'), pid('OrgaNICK%'), 'o', pid('Vitruvian'), 'o', 4.00, 600),
             (iid('mushrooms'), pid('Vitruvian%'), 'o', pid('Vitruvian'), 'o', 10.00, 454),
             (iid('onions'), pid('Woodmans%'), 'o', pid('Woodmans'), 'o', 2.00, 454),
             (iid('fermented ginger/garlic'), pid('Blow'), 'i', pid('Blow'), 'i', 2.00, 454),
+            (iid('fermented hot sauce'), pid('Blow'), 'i', pid('Blow'), 'i', 2.00, 454),
             (iid('black pepper'), pid('Penzeys'), 'o', pid('Penzeys'), 'o', 8.69, 94),
             (iid('anchovy sauce'), pid('OFood'), 'o', pid('Amazon'), 'o', 14.38, 1000),
             (iid('pumpkin seeds'), pid('Terrasoul'), 'o', pid('Amazon'), 'o', 13.75, 907)
@@ -1137,7 +1154,7 @@ INSERT INTO product_shapes (product_id, shape_id, grams)
             (prid('yeastie%'), sid('100 g%'), 100),
             (prid('cranberry walnut'), sid('12" boule'), 1600),
             (prid('cranberry walnut'), sid('hard rolls'), 120),
-            (prid('leverpostej'), sid('walter 25'), 1250),
+            (prid('leverpostej'), sid('walter 25'), 1255),
             (prid('pizza dough'), sid('16" pizza'), 400)
 ;
             
@@ -1165,18 +1182,20 @@ INSERT INTO product_ingredients (product_id, ingredient_id, bakers_percent)
             (prid('yeastie%'), iid('turmeric'), 2),
             (prid('yeastie%'), iid('sea salt'), 2),
             (prid('leverpostej'), iid('liver'), 100),
-            (prid('leverpostej'), iid('onions'), 28.3),
-            (prid('leverpostej'), iid('mushrooms'), 15),
+            (prid('leverpostej'), iid('onions'), 19),
+            (prid('leverpostej'), iid('mushrooms'), 19),
+            (prid('leverpostej'), iid('ghee'), 19),
+            (prid('leverpostej'), iid('eggs'), 22),
             (prid('leverpostej'), iid('bacon'), 40),
-            (prid('leverpostej'), iid('heavy cream'), 33.3),
+            (prid('leverpostej'), iid('whole milk'), 32),
             (prid('leverpostej'), iid('kamut flour'), 12.7),
-            (prid('leverpostej'), iid('eggs'), 33.3),
-            (prid('leverpostej'), iid('ghee'), 41.7),
-            (prid('leverpostej'), iid('red boat salt'), 1.2),
-            (prid('leverpostej'), iid('smoked paprika'), 1.5),
-            (prid('leverpostej'), iid('black pepper'), 0.5),
-            (prid('leverpostej'), iid('anchovy sauce'), 2),
-            (prid('leverpostej'), iid('fermented ginger/garlic'), 2)
+            (prid('leverpostej'), iid('red boat salt'), 1.5),
+            (prid('leverpostej'), iid('smoked paprika'), 0.8),
+            (prid('leverpostej'), iid('black pepper'), 0.3),
+            (prid('leverpostej'), iid('nutmeg'), 0.2),
+            (prid('leverpostej'), iid('anchovies'), 6.0),
+            (prid('leverpostej'), iid('fermented hot sauce'), 2.0),
+            (prid('leverpostej'), iid('fermented ginger/garlic'), 1.5)
 ;
 
             --product_ingredients(use lower case)
