@@ -691,7 +691,10 @@ SELECT p.party_name as maker, i.ingredient_name as item, ROUND(cc.old_cost, 2) A
   JOIN parties as p on cc.maker_id = p.party_id
  WHERE maker_id = p.party_id;
 
-
+--usage
+--SELECT ingredient_name as ingredient, cost, grams, cost_per_g 
+--FROM cost_list
+--WHERE cost_list.ingredient_name IN (SELECT ingredient FROM formula('rug%')) ORDER BY cost_per_g DESC;
 CREATE OR REPLACE VIEW cost_list AS
 SELECT i.ingredient_id, i.ingredient_name, ROUND(ic.cost, 2) AS cost, ic.grams, 
        ROUND(ic.cost / ic.grams, 5) AS cost_per_g 
